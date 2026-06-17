@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alternate World Cup 2026 Table</title>
+    <style>
+      :root {
+        /* light mode (default) */
+        --bg: #ffffff;
+        --panel: #eef1f4;
+        --line: #e1e5ea;
+        --text: #16191d;
+        --dim: #5f6b7a;
+        --hover: #f2f5f8;
+        --accent: #4ade80;
+        --accent2: #38bdf8;
+      }
+      :root[data-theme="dark"] {
+        --bg: #0e1116;
+        --panel: #161b22;
+        --line: #272d36;
+        --text: #e6edf3;
+        --dim: #8b949e;
+        --hover: #12171e;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.4 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-text-size-adjust: 100%;
+      }
+      /* Cap width on big screens; full-bleed on phones (the common case). */
+      .container {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px 4px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .sub {
+        margin-top: 3px;
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .theme {
+        flex: 0 0 auto;
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 9px;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .controls {
+        padding: 10px 12px 4px;
+      }
+      .toggle {
+        display: flex;
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .toggle button {
+        flex: 1;
+        background: var(--panel);
+        color: var(--dim);
+        border: 0;
+        padding: 9px 8px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .toggle button.on {
+        background: var(--accent);
+        color: #06210f;
+        font-weight: 600;
+      }
+      /* No overflow wrapper: the page itself scrolls both axes, so the sticky
+         header (top) and sticky rank/team columns (left) both work together. */
+      .wrap {
+        padding: 0 8px 32px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 460px;
+      }
+      th,
+      td {
+        padding: 9px 8px;
+        text-align: right;
+        white-space: nowrap;
+      }
+      th:nth-child(2),
+      td:nth-child(2) {
+        text-align: left;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--bg);
+        color: var(--dim);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        user-select: none;
+        border-bottom: 1px solid var(--line);
+      }
+      th.sorted {
+        color: var(--accent);
+      }
+      td {
+        border-bottom: 1px solid var(--line);
+        font-variant-numeric: tabular-nums;
+      }
+      tr:hover td {
+        background: var(--hover);
+      }
+      .rank {
+        color: var(--dim);
+        width: 30px;
+        min-width: 30px;
+        left: 0;
+      }
+      .team {
+        font-weight: 600;
+        left: 30px;
+      }
+      /* Freeze the rank + team columns so the stats scroll under them. */
+      td.rank,
+      td.team,
+      th.rank,
+      th.teamhead {
+        position: sticky;
+        background: var(--bg);
+        z-index: 1;
+      }
+      th.teamhead {
+        left: 30px;
+        text-align: left;
+      }
+      td.team,
+      th.teamhead {
+        box-shadow: 1px 0 0 var(--line);
+      }
+      thead th.rank,
+      thead th.teamhead {
+        z-index: 3; /* corner cells sit above both sticky axes */
+      }
+      .flag {
+        margin-right: 6px;
+      }
+      .grp {
+        color: var(--dim);
+        font-size: 11px;
+      }
+      .meta {
+        display: block;
+        margin-top: 1px;
+        color: var(--dim);
+        font-weight: 400;
+        font-size: 11px;
+      }
+      .note {
+        padding: 4px 16px 0;
+        color: var(--dim);
+        font-size: 11px;
+      }
+
+      /* Mobile: tighten spacing, let long team names wrap. */
+      @media (max-width: 560px) {
+        body {
+          font-size: 14px;
+        }
+        h1 {
+          font-size: 16px;
+        }
+        th,
+        td {
+          padding: 8px 5px;
+        }
+        td.team,
+        th.teamhead {
+          white-space: normal;
+          line-height: 1.2;
+          max-width: 150px;
+        }
+      }
+
+      /* Wider screens: let the picker shrink to its content instead of filling. */
+      @media (min-width: 561px) {
+        .toggle {
+          display: inline-flex;
+          width: auto;
+        }
+        .toggle button {
+          flex: 0 0 auto;
+          padding: 9px 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div>
+          <h1>World Cup 2026 — The Alternate Table</h1>
+          <div class="sub">
+            Points & goals for all 48 teams, per person or per dollar of GDP ·
+            tap a column to sort
+          </div>
+        </div>
+        <button id="theme" class="theme" type="button" aria-label="Toggle dark mode">🌙</button>
+      </header>
+
+      <div class="controls">
+        <div class="toggle" id="mode">
+          <button data-mode="pc" class="on">Per capita</button>
+          <button data-mode="gdp">Per GDP</button>
+          <button data-mode="raw">Per FIFA</button>
+        </div>
+      </div>
+      <div class="note" id="status"></div>
+
+      <div class="wrap">
+        <table id="tbl">
+          <thead>
+            <tr id="head"></tr>
+          </thead>
+          <tbody id="body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      // --- Your Supabase project (read-only anon access) ------------------
+      // Fill these in from the Supabase dashboard → Project Settings → API.
+      // The anon key is SAFE to ship in client code: with the row-level
+      // security policy in supabase-setup.sql, it can only READ the matches
+      // table, never write. Scores are written via the dashboard table editor.
+      const SUPABASE = {
+        url: "https://kacbkjjdnumtpbwliqry.supabase.co", // Project URL
+        anonKey: "sb_publishable_0wdKFPORjkKkag_8acDwnA_s58GZABI", // anon / public key
+      };
+      const supaConfigured = !/YOUR_PROJECT_REF|YOUR_ANON_KEY/.test(
+        SUPABASE.url + SUPABASE.anonKey,
+      );
+
+      // Data sources, tried in order. First one that returns played matches wins.
+      // 1) Supabase — your own DB; authoritative once you enter any score.
+      // 2) worldcup26.ir — community API, updated live during matches, no key.
+      // 3) openfootball — public domain, reliable, but updated by hand ~once a day.
+      const SOURCES = [
+        {
+          name: "Supabase (your DB)",
+          url: `${SUPABASE.url}/rest/v1/matches?select=team1,team2,score1,score2,status`,
+          headers: {
+            apikey: SUPABASE.anonKey,
+            Authorization: `Bearer ${SUPABASE.anonKey}`,
+          },
+          enabled: () => supaConfigured,
+          parse: parseSupabase,
+        },
+        {
+          name: "worldcup26.ir (live)",
+          url: "https://worldcup26.ir/get/games",
+          parse: parseWorldcup26,
+        },
+        {
+          name: "openfootball (daily)",
+          url: "https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json",
+          parse: parseOpenfootball,
+        },
+      ];
+      const CACHE_KEY = "wc2026_matches_v2";
+      const CACHE_TTL = 30 * 1000; // 30s — instant paint on quick reloads
+      const REFRESH_MS = 60 * 1000; // auto-refresh cadence while the page is open
+
+      // Static reference data: group, population (millions), nominal GDP (USD billions).
+      // Both pop and gdp are baked in (they don't change match-to-match — no extra API).
+      // GDP = nominal, IMF World Economic Outlook 2024-2026 estimates, USD billions.
+      const TEAMS = {
+        Mexico: { g: "A", pop: 130.9, gdp: 1853 },
+        "South Africa": { g: "A", pop: 63.2, gdp: 403 },
+        "South Korea": { g: "A", pop: 51.7, gdp: 1713 },
+        "Czech Republic": { g: "A", pop: 10.9, gdp: 343 },
+        Canada: { g: "B", pop: 40.8, gdp: 2241 },
+        "Bosnia and Herzegovina": { g: "B", pop: 3.2, gdp: 28 },
+        Qatar: { g: "B", pop: 3.0, gdp: 221 },
+        Switzerland: { g: "B", pop: 8.8, gdp: 885 },
+        Brazil: { g: "C", pop: 212.6, gdp: 2130 },
+        Morocco: { g: "C", pop: 37.8, gdp: 157 },
+        Haiti: { g: "C", pop: 11.7, gdp: 34 },
+        Scotland: { g: "C", pop: 5.5, gdp: 265 },
+        "United States": { g: "D", pop: 341.0, gdp: 29185 },
+        Paraguay: { g: "D", pop: 6.9, gdp: 45 },
+        Australia: { g: "D", pop: 26.6, gdp: 1771 },
+        Turkey: { g: "D", pop: 85.3, gdp: 1344 },
+        Germany: { g: "E", pop: 83.3, gdp: 4660 },
+        Curacao: { g: "E", pop: 0.156, gdp: 3.6 },
+        "Ivory Coast": { g: "E", pop: 28.9, gdp: 87 },
+        Ecuador: { g: "E", pop: 18.1, gdp: 126 },
+        Netherlands: { g: "F", pop: 18.0, gdp: 1218 },
+        Japan: { g: "F", pop: 123.9, gdp: 4070 },
+        Sweden: { g: "F", pop: 10.6, gdp: 609 },
+        Tunisia: { g: "F", pop: 12.3, gdp: 52 },
+        Belgium: { g: "G", pop: 11.8, gdp: 662 },
+        Egypt: { g: "G", pop: 114.5, gdp: 347 },
+        Iran: { g: "G", pop: 89.2, gdp: 464 },
+        "New Zealand": { g: "G", pop: 5.3, gdp: 249 },
+        Spain: { g: "H", pop: 48.4, gdp: 1731 },
+        "Cape Verde": { g: "H", pop: 0.524, gdp: 2.6 },
+        "Saudi Arabia": { g: "H", pop: 33.3, gdp: 1100 },
+        Uruguay: { g: "H", pop: 3.4, gdp: 80 },
+        France: { g: "I", pop: 68.4, gdp: 3174 },
+        Senegal: { g: "I", pop: 18.5, gdp: 31 },
+        Iraq: { g: "I", pop: 46.0, gdp: 264 },
+        Norway: { g: "I", pop: 5.6, gdp: 503 },
+        Argentina: { g: "J", pop: 46.0, gdp: 684 },
+        Algeria: { g: "J", pop: 46.7, gdp: 260 },
+        Austria: { g: "J", pop: 9.1, gdp: 551 },
+        Jordan: { g: "J", pop: 11.5, gdp: 53 },
+        Portugal: { g: "K", pop: 10.6, gdp: 303 },
+        "DR Congo": { g: "K", pop: 105.8, gdp: 73 },
+        Uzbekistan: { g: "K", pop: 36.4, gdp: 112 },
+        Colombia: { g: "K", pop: 52.9, gdp: 438 },
+        England: { g: "L", pop: 57.1, gdp: 3070 },
+        Croatia: { g: "L", pop: 3.8, gdp: 88 },
+        Ghana: { g: "L", pop: 34.4, gdp: 76 },
+        Panama: { g: "L", pop: 4.5, gdp: 92 },
+      };
+
+      // Map common name variants from either feed to our canonical keys.
+      const ALIAS = {
+        USA: "United States",
+        US: "United States",
+        "United States of America": "United States",
+        "Korea Republic": "South Korea",
+        "Republic of Korea": "South Korea",
+        "Korea, South": "South Korea",
+        "South Korea": "South Korea",
+        "IR Iran": "Iran",
+        "Iran (Islamic Republic of)": "Iran",
+        Türkiye: "Turkey",
+        Turkiye: "Turkey",
+        "Côte d'Ivoire": "Ivory Coast",
+        "Cote d'Ivoire": "Ivory Coast",
+        CIV: "Ivory Coast",
+        Curaçao: "Curacao",
+        "Bosnia & Herzegovina": "Bosnia and Herzegovina",
+        "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+        Bosnia: "Bosnia and Herzegovina",
+        "Congo DR": "DR Congo",
+        "DR Congo": "DR Congo",
+        "Democratic Republic of the Congo": "DR Congo",
+        "Congo (DR)": "DR Congo",
+        Czechia: "Czech Republic",
+        "Czech Republic": "Czech Republic",
+        "Cabo Verde": "Cape Verde",
+        "Cape Verde": "Cape Verde",
+        "Saudi Arabia": "Saudi Arabia",
+        KSA: "Saudi Arabia",
+      };
+      const FLAG = {
+        // light touch; falls back to no flag
+        Mexico: "🇲🇽",
+        "South Africa": "🇿🇦",
+        "South Korea": "🇰🇷",
+        "Czech Republic": "🇨🇿",
+        Canada: "🇨🇦",
+        "Bosnia and Herzegovina": "🇧🇦",
+        Qatar: "🇶🇦",
+        Switzerland: "🇨🇭",
+        Brazil: "🇧🇷",
+        Morocco: "🇲🇦",
+        Haiti: "🇭🇹",
+        Scotland: "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+        "United States": "🇺🇸",
+        Paraguay: "🇵🇾",
+        Australia: "🇦🇺",
+        Turkey: "🇹🇷",
+        Germany: "🇩🇪",
+        Curacao: "🇨🇼",
+        "Ivory Coast": "🇨🇮",
+        Ecuador: "🇪🇨",
+        Netherlands: "🇳🇱",
+        Japan: "🇯🇵",
+        Sweden: "🇸🇪",
+        Tunisia: "🇹🇳",
+        Belgium: "🇧🇪",
+        Egypt: "🇪🇬",
+        Iran: "🇮🇷",
+        "New Zealand": "🇳🇿",
+        Spain: "🇪🇸",
+        "Cape Verde": "🇨🇻",
+        "Saudi Arabia": "🇸🇦",
+        Uruguay: "🇺🇾",
+        France: "🇫🇷",
+        Senegal: "🇸🇳",
+        Iraq: "🇮🇶",
+        Norway: "🇳🇴",
+        Argentina: "🇦🇷",
+        Algeria: "🇩🇿",
+        Austria: "🇦🇹",
+        Jordan: "🇯🇴",
+        Portugal: "🇵🇹",
+        "DR Congo": "🇨🇩",
+        Uzbekistan: "🇺🇿",
+        Colombia: "🇨🇴",
+        England: "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+        Croatia: "🇭🇷",
+        Ghana: "🇬🇭",
+        Panama: "🇵🇦",
+      };
+
+      let state = {
+        mode: "pc",
+        sortKey: "pts",
+        dir: -1,
+        rows: [],
+        updated: null,
+      };
+
+      function canon(n) {
+        if (n == null) return "";
+        let s = String(n).trim();
+        if (ALIAS[s]) return ALIAS[s];
+        // strip accents and retry against alias keys and team keys
+        const norm = (x) =>
+          x
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
+        const ns = norm(s);
+        for (const k in ALIAS) {
+          if (norm(k) === ns) return ALIAS[k];
+        }
+        for (const k in TEAMS) {
+          if (norm(k) === ns) return k;
+        }
+        return s;
+      }
+
+      // --- Source parsers: each returns a normalized [{team1, team2, score:{ft:[h,a]}}] ---
+
+      // Supabase (PostgREST) returns the matches table verbatim as an array of
+      // { team1, team2, score1, score2, status }. A row counts as played once
+      // both scores are non-null — unplayed fixtures (null scores) score nothing.
+      function parseSupabase(json) {
+        const rows = Array.isArray(json) ? json : [];
+        return rows.map((r) => {
+          const hg = r.score1,
+            ag = r.score2;
+          const played = hg != null && ag != null;
+          return {
+            team1: r.team1,
+            team2: r.team2,
+            score: { ft: played ? [Number(hg), Number(ag)] : null },
+          };
+        });
+      }
+
+      // openfootball: { rounds:[ { matches:[ {team1:{name},team2:{name},score:{ft:[h,a]}} ] } ] }
+      // (older variants use flat strings for team1/team2 — handle both)
+      function parseOpenfootball(json) {
+        const out = [];
+        const rounds = json.rounds || [];
+        for (const r of rounds) {
+          for (const m of r.matches || []) {
+            const t1 = m.team1 && m.team1.name ? m.team1.name : m.team1;
+            const t2 = m.team2 && m.team2.name ? m.team2.name : m.team2;
+            let ft = m.score && m.score.ft;
+            out.push({
+              team1: t1,
+              team2: t2,
+              score: { ft: Array.isArray(ft) ? ft : null },
+            });
+          }
+        }
+        return out;
+      }
+
+      // worldcup26.ir /get/games: array of game objects. Field names vary, so we
+      // probe a few likely shapes for team names and final scores.
+      function parseWorldcup26(json) {
+        const games = Array.isArray(json)
+          ? json
+          : json.games || json.data || json.matches || json.result || [];
+        const pick = (o, keys) => {
+          for (const k of keys) {
+            if (o[k] != null) return o[k];
+          }
+          return null;
+        };
+        const teamName = (v) =>
+          v && typeof v === "object"
+            ? v.name || v.title || v.team || v.en || v.country
+            : v;
+        const out = [];
+        for (const g of games) {
+          const t1 = teamName(
+            pick(g, [
+              "team1",
+              "home",
+              "homeTeam",
+              "home_team",
+              "teamA",
+              "host",
+            ]),
+          );
+          const t2 = teamName(
+            pick(g, [
+              "team2",
+              "away",
+              "awayTeam",
+              "away_team",
+              "teamB",
+              "guest",
+            ]),
+          );
+          let hg = pick(g, [
+            "score1",
+            "home_score",
+            "homeScore",
+            "homeGoals",
+            "goalsHome",
+            "scoreHome",
+            "fthg",
+          ]);
+          let ag = pick(g, [
+            "score2",
+            "away_score",
+            "awayScore",
+            "awayGoals",
+            "goalsAway",
+            "scoreAway",
+            "ftag",
+          ]);
+          // some feeds nest score as {home,away} or "2-1" string
+          const sc = pick(g, ["score", "result", "ft"]);
+          if ((hg == null || ag == null) && sc) {
+            if (typeof sc === "object") {
+              hg = sc.home ?? sc.h ?? sc[0];
+              ag = sc.away ?? sc.a ?? sc[1];
+            } else if (typeof sc === "string") {
+              const m = sc.match(/(\d+)\s*[-:]\s*(\d+)/);
+              if (m) {
+                hg = +m[1];
+                ag = +m[2];
+              }
+            }
+          }
+          const status = String(
+            pick(g, ["status", "state", "matchStatus"]) || "",
+          ).toLowerCase();
+          const finished = /(ft|finished|full|ended|played|result)/.test(
+            status,
+          );
+          const num = (x) => (x == null || x === "" ? null : Number(x));
+          hg = num(hg);
+          ag = num(ag);
+          // count only matches that have a real final score
+          const ft =
+            hg != null &&
+            ag != null &&
+            !Number.isNaN(hg) &&
+            !Number.isNaN(ag) &&
+            (finished || status === "")
+              ? [hg, ag]
+              : null;
+          if (t1 && t2) out.push({ team1: t1, team2: t2, score: { ft } });
+        }
+        return out;
+      }
+
+      function blankRow(name) {
+        return {
+          name,
+          group: TEAMS[name].g,
+          pop: TEAMS[name].pop,
+          gdp: TEAMS[name].gdp,
+          pld: 0,
+          w: 0,
+          d: 0,
+          l: 0,
+          gf: 0,
+          ga: 0,
+          pts: 0,
+        };
+      }
+
+      function buildTable(matches) {
+        const t = {};
+        Object.keys(TEAMS).forEach((n) => (t[n] = blankRow(n)));
+        for (const m of matches) {
+          const h = canon(m.team1),
+            a = canon(m.team2);
+          if (!t[h] || !t[a]) continue;
+          const s = m.score && m.score.ft;
+          if (!Array.isArray(s) || s.length < 2) continue; // not played yet
+          const [hg, ag] = s;
+          if (hg == null || ag == null) continue;
+          t[h].pld++;
+          t[a].pld++;
+          t[h].gf += hg;
+          t[h].ga += ag;
+          t[a].gf += ag;
+          t[a].ga += hg;
+          if (hg > ag) {
+            t[h].w++;
+            t[a].l++;
+            t[h].pts += 3;
+          } else if (hg < ag) {
+            t[a].w++;
+            t[h].l++;
+            t[a].pts += 3;
+          } else {
+            t[h].d++;
+            t[a].d++;
+            t[h].pts++;
+            t[a].pts++;
+          }
+        }
+        return Object.values(t);
+      }
+
+      // Headline metrics (Pts, Goals, GD) — each divided by population or GDP in
+      // those modes — then the conventional standings block, then raw goal
+      // tallies at the far right for reference.
+      const COLS = [
+        { key: "pts", label: "Pts", get: (r) => r.pts, scale: true, num: true },
+        { key: "gf", label: "Goals", get: (r) => r.gf, scale: true, num: true },
+        {
+          key: "gd",
+          label: "GD",
+          get: (r) => r.gf - r.ga,
+          scale: true,
+          num: true,
+        },
+        {
+          key: "group",
+          label: "Grp",
+          get: (r) => r.group,
+          fmt: (v) => `<span class="grp">${v}</span>`,
+          num: false,
+        },
+        { key: "pld", label: "Pld", get: (r) => r.pld, num: true },
+        { key: "w", label: "W", get: (r) => r.w, num: true },
+        { key: "d", label: "D", get: (r) => r.d, num: true },
+        { key: "l", label: "L", get: (r) => r.l, num: true },
+        // Raw goal tallies, always shown at the far right for reference.
+        { key: "rgf", label: "GF", get: (r) => r.gf, num: true },
+        { key: "rga", label: "GA", get: (r) => r.ga, num: true },
+        { key: "rgd", label: "GD", get: (r) => r.gf - r.ga, num: true },
+      ];
+
+      // The reference column shown right after the team name, sortable, that
+      // mirrors the active divisor: Population in per-capita view, GDP in
+      // per-GDP view, nothing in Per FIFA view.
+      function refCol() {
+        if (state.mode === "pc")
+          return { key: "pop", label: "Pop", get: (r) => r.pop, fmt: fmtPop, ref: true, num: true };
+        if (state.mode === "gdp")
+          return { key: "gdp", label: "GDP", get: (r) => r.gdp, fmt: fmtGdp, ref: true, num: true };
+        return null;
+      }
+      function activeCols() {
+        const rc = refCol();
+        return rc ? [rc, ...COLS] : COLS;
+      }
+
+      // Divisor and compact label suffix for the current mode.
+      function modeInfo() {
+        if (state.mode === "pc") return { div: (r) => r.pop, suffix: "/p" };
+        if (state.mode === "gdp") return { div: (r) => r.gdp, suffix: "/$" };
+        return { div: () => 1, suffix: "" };
+      }
+
+      function val(r, col) {
+        const raw = col.get(r);
+        // per million people, or per $B GDP, in the scaled modes
+        if (col.scale && state.mode !== "raw") return raw / modeInfo().div(r);
+        return raw;
+      }
+      // Compact population / GDP labels, e.g. "5.5M" and "$265B" (or "$29.2T").
+      function fmtPop(p) {
+        const n = p >= 1 ? (p % 1 === 0 ? String(p) : p.toFixed(1)) : p.toFixed(2);
+        return n + "M";
+      }
+      function fmtGdp(g) {
+        if (g >= 1000) return "$" + (g / 1000).toFixed(1) + "T";
+        return "$" + (g >= 10 ? Math.round(g) : g.toFixed(1)) + "B";
+      }
+      // Numeric cell value, capped at 2 decimals (trailing zeros dropped).
+      function fmtNum(v) {
+        if (!isFinite(v)) return "∞";
+        return String(Math.round(v * 100) / 100);
+      }
+
+      function display(r, col) {
+        if (!col.num) return col.fmt(col.get(r)); // group
+        if (col.ref) return col.fmt(col.get(r)); // Pop / GDP, formatted
+        return fmtNum(val(r, col));
+      }
+
+      // Header label: compact and mode-aware. Scaled cols get "/p" or "/$".
+      function colLabel(c) {
+        if (c.scale && state.mode !== "raw") return c.label + modeInfo().suffix;
+        return c.label;
+      }
+
+      function render() {
+        const cols = activeCols();
+        if (!cols.some((c) => c.key === state.sortKey)) state.sortKey = "pts";
+        const head = document.getElementById("head");
+        head.innerHTML =
+          `<th class="rank">#</th><th class="teamhead">Team</th>` +
+          cols.map((c) => {
+            const sorted = c.key === state.sortKey ? " sorted" : "";
+            const arrow =
+              c.key === state.sortKey ? (state.dir < 0 ? " ↓" : " ↑") : "";
+            return `<th class="col${sorted}" data-key="${c.key}">${colLabel(c)}${arrow}</th>`;
+          }).join("");
+
+        const col = cols.find((c) => c.key === state.sortKey);
+        const rows = [...state.rows].sort((a, b) => {
+          let av = col ? val(a, col) : 0;
+          let bv = col ? val(b, col) : 0;
+          if (av < bv) return -state.dir;
+          if (av > bv) return state.dir;
+          return b.pts - a.pts; // stable tiebreak
+        });
+
+        document.getElementById("body").innerHTML = rows
+          .map((r, i) => {
+            const flag = FLAG[r.name]
+              ? `<span class="flag">${FLAG[r.name]}</span>`
+              : "";
+            const cells = cols.map((c) => `<td>${display(r, c)}</td>`).join("");
+            const meta = `<span class="meta">(${fmtPop(r.pop)}, ${fmtGdp(r.gdp)})</span>`;
+            return `<tr><td class="rank">${i + 1}</td><td class="team">${flag}${r.name}${meta}</td>${cells}</tr>`;
+          })
+          .join("");
+
+        // header click sort
+        head.querySelectorAll("th.col").forEach((th) => {
+          th.onclick = () => {
+            const k = th.dataset.key;
+            if (state.sortKey === k) state.dir *= -1;
+            else {
+              state.sortKey = k;
+              state.dir = -1;
+            }
+            render();
+          };
+        });
+      }
+
+      function setStatus(msg) {
+        document.getElementById("status").textContent = msg;
+      }
+
+      function statusLine(matches, t) {
+        const time = new Date(t).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return `${countPlayed(matches)} played · updated ${time}`;
+      }
+
+      function fromCache() {
+        try {
+          const raw = localStorage.getItem(CACHE_KEY);
+          if (!raw) return null;
+          const o = JSON.parse(raw);
+          if (Date.now() - o.t > CACHE_TTL) return { stale: true, ...o };
+          return o;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function countPlayed(matches) {
+        return matches.filter((m) => m.score && Array.isArray(m.score.ft))
+          .length;
+      }
+
+      async function tryFetch(src) {
+        const res = await fetch(src.url, {
+          cache: "no-store",
+          headers: src.headers || undefined,
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const json = await res.json();
+        const matches = src.parse(json) || [];
+        return matches;
+      }
+
+      async function load(force) {
+        const cached = fromCache();
+        if (cached && !cached.stale && !force) {
+          state.rows = buildTable(cached.matches);
+          state.updated = cached.t;
+          render();
+          setStatus(statusLine(cached.matches, cached.t));
+          return;
+        }
+
+        let best = null;
+        for (const src of SOURCES) {
+          if (src.enabled && !src.enabled()) continue;
+          try {
+            const matches = await tryFetch(src);
+            const played = countPlayed(matches);
+            if (!best || played > best.played)
+              best = { matches, played, src: src.name };
+            // A source with results is good enough — stop early on the live one.
+            if (played > 0) {
+              best = { matches, played, src: src.name };
+              break;
+            }
+          } catch (e) {
+            /* try the next source */
+          }
+        }
+
+        if (best && best.matches.length) {
+          localStorage.setItem(
+            CACHE_KEY,
+            JSON.stringify({
+              t: Date.now(),
+              matches: best.matches,
+              src: best.src,
+            }),
+          );
+          state.rows = buildTable(best.matches);
+          state.updated = Date.now();
+          render();
+          setStatus(statusLine(best.matches, state.updated));
+          return;
+        }
+
+        // total failure — fall back to cache or zeros
+        if (cached) {
+          state.rows = buildTable(cached.matches);
+          render();
+          setStatus("offline · " + statusLine(cached.matches, cached.t));
+        } else {
+          state.rows = Object.keys(TEAMS).map(blankRow);
+          render();
+          setStatus("no data yet — retrying…");
+        }
+      }
+
+      document.querySelectorAll("#mode button").forEach((b) => {
+        b.onclick = () => {
+          document
+            .querySelectorAll("#mode button")
+            .forEach((x) => x.classList.remove("on"));
+          b.classList.add("on");
+          state.mode = b.dataset.mode;
+          render();
+        };
+      });
+
+      // Theme: default light, remember the user's choice.
+      const THEME_KEY = "wc2026_theme";
+      function applyTheme(t) {
+        document.documentElement.setAttribute("data-theme", t);
+        document.getElementById("theme").textContent = t === "dark" ? "☀️" : "🌙";
+      }
+      let theme = localStorage.getItem(THEME_KEY) || "light";
+      applyTheme(theme);
+      document.getElementById("theme").onclick = () => {
+        theme = theme === "dark" ? "light" : "dark";
+        localStorage.setItem(THEME_KEY, theme);
+        applyTheme(theme);
+      };
+
+      load(false);
+      setInterval(() => load(false), REFRESH_MS);
+      // refresh the moment the tab is brought back into focus
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") load(false);
+      });
+    </script>
+  </body>
+</html>
