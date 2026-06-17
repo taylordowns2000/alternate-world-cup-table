@@ -6,7 +6,6 @@
     <title>Alternate World Cup 2026 Table</title>
     <style>
       :root {
-        /* light mode (default) */
         --bg: #ffffff;
         --panel: #eef1f4;
         --line: #e1e5ea;
@@ -15,14 +14,6 @@
         --hover: #f2f5f8;
         --accent: #4ade80;
         --accent2: #38bdf8;
-      }
-      :root[data-theme="dark"] {
-        --bg: #0e1116;
-        --panel: #161b22;
-        --line: #272d36;
-        --text: #e6edf3;
-        --dim: #8b949e;
-        --hover: #12171e;
       }
       * {
         box-sizing: border-box;
@@ -39,16 +30,23 @@
         color: var(--text);
         -webkit-text-size-adjust: 100%;
       }
-      /* Cap width on big screens; full-bleed on phones (the common case). */
+      /* Centered, capped column that fills the viewport height. Header/controls
+         stay fixed at the top; only the table area scrolls (see .wrap). This
+         keeps the wide table contained so the whole thing stays centered. */
       .container {
         max-width: 640px;
+        height: 100vh;
+        height: 100dvh;
         margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+      }
+      header,
+      .controls,
+      .note {
+        flex: 0 0 auto;
       }
       header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 12px;
         padding: 14px 16px 4px;
       }
       h1 {
@@ -60,17 +58,6 @@
         margin-top: 3px;
         color: var(--dim);
         font-size: 12px;
-      }
-      .theme {
-        flex: 0 0 auto;
-        background: var(--panel);
-        color: var(--text);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 6px 9px;
-        font-size: 14px;
-        line-height: 1;
-        cursor: pointer;
       }
       .controls {
         padding: 10px 12px 4px;
@@ -96,10 +83,14 @@
         color: #06210f;
         font-weight: 600;
       }
-      /* No overflow wrapper: the page itself scrolls both axes, so the sticky
-         header (top) and sticky rank/team columns (left) both work together. */
+      /* The only scroll region: fills the remaining height and scrolls both
+         axes. The sticky header (top) and sticky rank/team columns (left)
+         anchor to this container, so they always stay put. */
       .wrap {
-        padding: 0 8px 32px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 0 8px 8px;
       }
       table {
         width: 100%;
@@ -228,14 +219,11 @@
   <body>
     <div class="container">
       <header>
-        <div>
-          <h1>World Cup 2026 — The Alternate Table</h1>
-          <div class="sub">
-            Points & goals for all 48 teams, per person or per dollar of GDP ·
-            tap a column to sort
-          </div>
+        <h1>World Cup 2026 — The Alternate Table</h1>
+        <div class="sub">
+          Points & goals for all 48 teams, per person or per dollar of GDP · tap
+          a column to sort
         </div>
-        <button id="theme" class="theme" type="button" aria-label="Toggle dark mode">🌙</button>
       </header>
 
       <div class="controls">
@@ -887,20 +875,6 @@
           render();
         };
       });
-
-      // Theme: default light, remember the user's choice.
-      const THEME_KEY = "wc2026_theme";
-      function applyTheme(t) {
-        document.documentElement.setAttribute("data-theme", t);
-        document.getElementById("theme").textContent = t === "dark" ? "☀️" : "🌙";
-      }
-      let theme = localStorage.getItem(THEME_KEY) || "light";
-      applyTheme(theme);
-      document.getElementById("theme").onclick = () => {
-        theme = theme === "dark" ? "light" : "dark";
-        localStorage.setItem(THEME_KEY, theme);
-        applyTheme(theme);
-      };
 
       load(false);
       setInterval(() => load(false), REFRESH_MS);
