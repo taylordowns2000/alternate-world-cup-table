@@ -103,7 +103,9 @@
       }
       table {
         width: 100%;
-        border-collapse: collapse;
+        /* separate (not collapse) so the sticky <th> actually sticks in Safari */
+        border-collapse: separate;
+        border-spacing: 0;
         min-width: 460px;
       }
       th,
