@@ -230,7 +230,7 @@
         <div class="toggle" id="mode">
           <button data-mode="pc" class="on">Per capita</button>
           <button data-mode="gdp">Per GDP</button>
-          <button data-mode="raw">Per FIFA</button>
+          <button data-mode="raw">Unscaled</button>
         </div>
       </div>
       <div class="note" id="status"></div>
@@ -640,15 +640,18 @@
       // Headline metrics (Pts, Goals, GD) — each divided by population or GDP in
       // those modes — then the conventional standings block, then raw goal
       // tallies at the far right for reference.
+      // The scaled headline columns (Pts/Goals/GD) are hidden in Per FIFA view,
+      // where they'd just duplicate the raw conventional block on the right.
       const COLS = [
-        { key: "pts", label: "Pts", get: (r) => r.pts, scale: true, num: true },
-        { key: "gf", label: "Goals", get: (r) => r.gf, scale: true, num: true },
+        { key: "pts", label: "Pts", get: (r) => r.pts, scale: true, num: true, hideInRaw: true },
+        { key: "gf", label: "Goals", get: (r) => r.gf, scale: true, num: true, hideInRaw: true },
         {
           key: "gd",
           label: "GD",
           get: (r) => r.gf - r.ga,
           scale: true,
           num: true,
+          hideInRaw: true,
         },
         {
           key: "group",
@@ -661,10 +664,11 @@
         { key: "w", label: "W", get: (r) => r.w, num: true },
         { key: "d", label: "D", get: (r) => r.d, num: true },
         { key: "l", label: "L", get: (r) => r.l, num: true },
-        // Raw goal tallies, always shown at the far right for reference.
+        // Raw conventional tallies, always shown at the far right for reference.
         { key: "rgf", label: "GF", get: (r) => r.gf, num: true },
         { key: "rga", label: "GA", get: (r) => r.ga, num: true },
         { key: "rgd", label: "GD", get: (r) => r.gf - r.ga, num: true },
+        { key: "rpts", label: "Pts", get: (r) => r.pts, num: true },
       ];
 
       // The reference column shown right after the team name, sortable, that
@@ -679,7 +683,9 @@
       }
       function activeCols() {
         const rc = refCol();
-        return rc ? [rc, ...COLS] : COLS;
+        let cols = rc ? [rc, ...COLS] : [...COLS];
+        if (state.mode === "raw") cols = cols.filter((c) => !c.hideInRaw);
+        return cols;
       }
 
       // Divisor and compact label suffix for the current mode.
@@ -724,7 +730,8 @@
 
       function render() {
         const cols = activeCols();
-        if (!cols.some((c) => c.key === state.sortKey)) state.sortKey = "pts";
+        if (!cols.some((c) => c.key === state.sortKey))
+          state.sortKey = state.mode === "raw" ? "rpts" : "pts";
         const head = document.getElementById("head");
         head.innerHTML =
           `<th class="rank">#</th><th class="teamhead">Team</th>` +
