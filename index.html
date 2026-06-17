@@ -90,7 +90,9 @@
         flex: 1 1 auto;
         min-height: 0;
         overflow: auto;
-        padding: 0 8px 8px;
+        /* No horizontal padding: a scroll container's side padding lets content
+           bleed past the sticky left columns (esp. iOS Safari). */
+        padding: 0 0 8px;
       }
       table {
         width: 100%;
@@ -244,6 +246,7 @@
         <div class="toggle" id="mode">
           <button data-mode="pc" class="on">Per capita</button>
           <button data-mode="gdp">Per GDP</button>
+          <button data-mode="gdppc">Per GDP/capita</button>
           <button data-mode="raw">Unscaled</button>
         </div>
       </div>
@@ -280,7 +283,7 @@
       const SOURCES = [
         {
           name: "Supabase (your DB)",
-          url: `${SUPABASE.url}/rest/v1/matches?select=team1,team2,score1,score2,status`,
+          url: `${SUPABASE.url}/rest/v1/matches?select=team1,team2,score1,score2,status,updated_at`,
           headers: {
             apikey: SUPABASE.anonKey,
             Authorization: `Bearer ${SUPABASE.anonKey}`,
@@ -376,6 +379,7 @@
         Curaçao: "Curacao",
         "Bosnia & Herzegovina": "Bosnia and Herzegovina",
         "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+        "Bosnia-Herzegovina": "Bosnia and Herzegovina",
         Bosnia: "Bosnia and Herzegovina",
         "Congo DR": "DR Congo",
         "DR Congo": "DR Congo",
@@ -384,6 +388,7 @@
         Czechia: "Czech Republic",
         "Czech Republic": "Czech Republic",
         "Cabo Verde": "Cape Verde",
+        "Cape Verde Islands": "Cape Verde",
         "Cape Verde": "Cape Verde",
         "Saudi Arabia": "Saudi Arabia",
         KSA: "Saudi Arabia",
@@ -483,6 +488,7 @@
             team1: r.team1,
             team2: r.team2,
             score: { ft: played ? [Number(hg), Number(ag)] : null },
+            updated: r.updated_at, // when this row last changed in the DB
           };
         });
       }
@@ -721,6 +727,15 @@
             ref: true,
             num: true,
           };
+        if (state.mode === "gdppc")
+          return {
+            key: "gdppc",
+            label: "$/cap",
+            get: (r) => r.gdp / r.pop,
+            fmt: fmtGdpPc,
+            ref: true,
+            num: true,
+          };
         return null;
       }
       function activeCols() {
@@ -734,6 +749,10 @@
       function modeInfo() {
         if (state.mode === "pc") return { div: (r) => r.pop, suffix: "/p" };
         if (state.mode === "gdp") return { div: (r) => r.gdp, suffix: "/$" };
+        // per GDP-per-capita (i.e. per dollar-per-person) — rewards teams that
+        // overperform relative to how wealthy their people are.
+        if (state.mode === "gdppc")
+          return { div: (r) => r.gdp / r.pop, suffix: "/$p" };
         return { div: () => 1, suffix: "" };
       }
 
@@ -752,6 +771,10 @@
       function fmtGdp(g) {
         if (g >= 1000) return "$" + (g / 1000).toFixed(1) + "T";
         return "$" + (g >= 10 ? Math.round(g) : g.toFixed(1)) + "B";
+      }
+      // GDP per capita, from the gdp/pop ratio (≈ thousands of $ per person).
+      function fmtGdpPc(ratio) {
+        return "$" + Math.round(ratio) + "k";
       }
       // Numeric cell value, capped at 3 decimals (trailing zeros dropped).
       function fmtNum(v) {
@@ -850,6 +873,17 @@
           .length;
       }
 
+      // Most recent row-update time across the matches (when the DB last got
+      // new data), or null for sources that don't carry an update timestamp.
+      function maxUpdated(matches) {
+        let mx = 0;
+        for (const m of matches) {
+          const t = m.updated ? Date.parse(m.updated) : 0;
+          if (t > mx) mx = t;
+        }
+        return mx || null;
+      }
+
       async function tryFetch(src) {
         const res = await fetch(src.url, {
           cache: "no-store",
@@ -865,9 +899,9 @@
         const cached = fromCache();
         if (cached && !cached.stale && !force) {
           state.rows = buildTable(cached.matches);
-          state.updated = cached.t;
+          state.updated = cached.u || cached.t;
           render();
-          setStatus(statusLine(cached.matches, cached.t));
+          setStatus(statusLine(cached.matches, state.updated));
           return;
         }
 
@@ -890,18 +924,21 @@
         }
 
         if (best && best.matches.length) {
+          // Prefer the DB's own last-updated time; fall back to fetch time.
+          const dataT = maxUpdated(best.matches) || Date.now();
           localStorage.setItem(
             CACHE_KEY,
             JSON.stringify({
               t: Date.now(),
+              u: dataT,
               matches: best.matches,
               src: best.src,
             }),
           );
           state.rows = buildTable(best.matches);
-          state.updated = Date.now();
+          state.updated = dataT;
           render();
-          setStatus(statusLine(best.matches, state.updated));
+          setStatus(statusLine(best.matches, dataT));
           return;
         }
 
@@ -909,7 +946,9 @@
         if (cached) {
           state.rows = buildTable(cached.matches);
           render();
-          setStatus("offline · " + statusLine(cached.matches, cached.t));
+          setStatus(
+            "offline · " + statusLine(cached.matches, cached.u || cached.t),
+          );
         } else {
           state.rows = Object.keys(TEAMS).map(blankRow);
           render();

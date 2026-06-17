@@ -20,7 +20,9 @@ for (const [k, v] of Object.entries({
   SUPABASE_SERVICE_KEY: SERVICE_KEY,
 })) {
   if (!v) {
-    console.error(`Missing env var ${k}. Copy .env.example to .env and fill it in.`);
+    console.error(
+      `Missing env var ${k}. Copy .env.example to .env and fill it in.`,
+    );
     process.exit(1);
   }
 }
@@ -29,30 +31,81 @@ for (const [k, v] of Object.entries({
 //     wc2026-table.html). If a feed name doesn't map, it's logged so you can
 //     add an alias here. -------------------------------------------------------
 const TEAMS = new Set([
-  "Mexico", "South Africa", "South Korea", "Czech Republic", "Canada",
-  "Bosnia and Herzegovina", "Qatar", "Switzerland", "Brazil", "Morocco",
-  "Haiti", "Scotland", "United States", "Paraguay", "Australia", "Turkey",
-  "Germany", "Curacao", "Ivory Coast", "Ecuador", "Netherlands", "Japan",
-  "Sweden", "Tunisia", "Belgium", "Egypt", "Iran", "New Zealand", "Spain",
-  "Cape Verde", "Saudi Arabia", "Uruguay", "France", "Senegal", "Iraq",
-  "Norway", "Argentina", "Algeria", "Austria", "Jordan", "Portugal",
-  "DR Congo", "Uzbekistan", "Colombia", "England", "Croatia", "Ghana", "Panama",
+  "Mexico",
+  "South Africa",
+  "South Korea",
+  "Czech Republic",
+  "Canada",
+  "Bosnia and Herzegovina",
+  "Qatar",
+  "Switzerland",
+  "Brazil",
+  "Morocco",
+  "Haiti",
+  "Scotland",
+  "United States",
+  "Paraguay",
+  "Australia",
+  "Turkey",
+  "Germany",
+  "Curacao",
+  "Ivory Coast",
+  "Ecuador",
+  "Netherlands",
+  "Japan",
+  "Sweden",
+  "Tunisia",
+  "Belgium",
+  "Egypt",
+  "Iran",
+  "New Zealand",
+  "Spain",
+  "Cape Verde",
+  "Saudi Arabia",
+  "Uruguay",
+  "France",
+  "Senegal",
+  "Iraq",
+  "Norway",
+  "Argentina",
+  "Algeria",
+  "Austria",
+  "Jordan",
+  "Portugal",
+  "DR Congo",
+  "Uzbekistan",
+  "Colombia",
+  "England",
+  "Croatia",
+  "Ghana",
+  "Panama",
 ]);
 
 const ALIAS = {
-  USA: "United States", US: "United States",
+  USA: "United States",
+  US: "United States",
   "United States of America": "United States",
-  "Korea Republic": "South Korea", "Republic of Korea": "South Korea",
+  "Korea Republic": "South Korea",
+  "Republic of Korea": "South Korea",
   "Korea, South": "South Korea",
-  "IR Iran": "Iran", "Iran (Islamic Republic of)": "Iran",
-  "Türkiye": "Turkey", Turkiye: "Turkey",
-  "Côte d'Ivoire": "Ivory Coast", "Cote d'Ivoire": "Ivory Coast", CIV: "Ivory Coast",
-  "Curaçao": "Curacao",
-  "Bosnia & Herzegovina": "Bosnia and Herzegovina", Bosnia: "Bosnia and Herzegovina",
-  "Congo DR": "DR Congo", "Democratic Republic of the Congo": "DR Congo",
-  "Congo (DR)": "DR Congo", "DR Congo": "DR Congo",
+  "IR Iran": "Iran",
+  "Iran (Islamic Republic of)": "Iran",
+  Türkiye: "Turkey",
+  Turkiye: "Turkey",
+  "Côte d'Ivoire": "Ivory Coast",
+  "Cote d'Ivoire": "Ivory Coast",
+  CIV: "Ivory Coast",
+  Curaçao: "Curacao",
+  "Bosnia-Herzegovina": "Bosnia and Herzegovina",
+  "Bosnia & Herzegovina": "Bosnia and Herzegovina",
+  Bosnia: "Bosnia and Herzegovina",
+  "Congo DR": "DR Congo",
+  "Democratic Republic of the Congo": "DR Congo",
+  "Congo (DR)": "DR Congo",
+  "DR Congo": "DR Congo",
   Czechia: "Czech Republic",
   "Cabo Verde": "Cape Verde",
+  "Cape Verde Islands": "Cape Verde",
   KSA: "Saudi Arabia",
 };
 
@@ -77,12 +130,17 @@ function canon(n) {
 
 // --- Fetch matches from football-data.org -----------------------------------
 async function fetchMatches() {
-  const res = await fetch("https://api.football-data.org/v4/competitions/WC/matches", {
-    headers: { "X-Auth-Token": FD_TOKEN },
-  });
+  const res = await fetch(
+    "https://api.football-data.org/v4/competitions/WC/matches",
+    {
+      headers: { "X-Auth-Token": FD_TOKEN },
+    },
+  );
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`football-data.org HTTP ${res.status}: ${body.slice(0, 200)}`);
+    throw new Error(
+      `football-data.org HTTP ${res.status}: ${body.slice(0, 200)}`,
+    );
   }
   const json = await res.json();
   return json.matches || [];
@@ -106,7 +164,10 @@ function toRow(m) {
     team2: away,
     score1: m.score?.fullTime?.home ?? null,
     score2: m.score?.fullTime?.away ?? null,
-    status: m.status === "FINISHED" ? "finished" : String(m.status || "").toLowerCase(),
+    status:
+      m.status === "FINISHED"
+        ? "finished"
+        : String(m.status || "").toLowerCase(),
     kickoff: m.utcDate || null,
     _homeRaw: m.homeTeam?.name,
     _awayRaw: m.awayTeam?.name,
@@ -131,7 +192,26 @@ async function upsert(rows) {
   );
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Supabase upsert HTTP ${res.status}: ${body.slice(0, 300)}`);
+    throw new Error(
+      `Supabase upsert HTTP ${res.status}: ${body.slice(0, 300)}`,
+    );
+  }
+}
+
+// Current rows in the DB, keyed by ext_id, so we can write only what changed
+// (keeps updated_at meaningful). On any failure we return an empty map, which
+// makes the caller treat everything as new and write it all (safe fallback).
+async function fetchExisting() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/matches?select=ext_id,score1,score2,status,team1,team2,grp,stage`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+    );
+    if (!res.ok) return new Map();
+    const rows = await res.json();
+    return new Map(rows.map((r) => [r.ext_id, r]));
+  } catch {
+    return new Map();
   }
 }
 
@@ -164,12 +244,36 @@ async function main() {
     return;
   }
 
-  await upsert(keep);
+  // Write only rows that are new or whose data actually changed, so the DB's
+  // updated_at reflects real match-data changes rather than every run.
+  const existing = await fetchExisting();
+  const changed = keep.filter((r) => {
+    const e = existing.get(r.ext_id);
+    if (!e) return true; // new match
+    return (
+      e.score1 !== r.score1 ||
+      e.score2 !== r.score2 ||
+      e.status !== r.status ||
+      e.team1 !== r.team1 ||
+      e.team2 !== r.team2 ||
+      e.grp !== r.grp ||
+      e.stage !== r.stage
+    );
+  });
 
-  const played = keep.filter((r) => r.score1 != null && r.score2 != null).length;
+  if (!changed.length) {
+    console.log("No changes since last run. Done.");
+    return;
+  }
+
+  await upsert(changed);
+
+  const played = changed.filter(
+    (r) => r.score1 != null && r.score2 != null,
+  ).length;
   console.log(
-    `\n✅ Upserted ${keep.length} matches (${played} played, ` +
-      `${keep.length - played} upcoming) into Supabase.`,
+    `\n✅ Upserted ${changed.length} changed match(es) ` +
+      `(${played} with a final score) into Supabase.`,
   );
 }
 
