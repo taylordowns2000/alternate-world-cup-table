@@ -59,10 +59,64 @@
         color: var(--dim);
         font-size: 12px;
       }
-      /* Live explanation of the selected column (bright green), inline in the
-         status line. */
-      .cx {
-        color: var(--accent);
+      /* "Explain" link in the status line + the full-screen key modal. */
+      .explain {
+        color: var(--dim);
+        cursor: pointer;
+        font-weight: 700;
+        text-decoration: underline;
+      }
+      .modal[hidden] {
+        display: none;
+      }
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        background: var(--bg);
+        overflow: auto;
+        padding: 18px 18px 40px;
+      }
+      .modal-inner {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      .modal-close {
+        position: absolute;
+        top: 10px;
+        right: 14px;
+        background: none;
+        border: 0;
+        color: var(--dim);
+        font-size: 28px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .modal h2 {
+        margin: 0 0 2px;
+        font-size: 18px;
+      }
+      .modal .sec {
+        margin: 18px 0 4px;
+        color: var(--dim);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .modal ul {
+        margin: 0;
+        padding-left: 18px;
+        line-height: 1.7;
+        font-size: 14px;
+      }
+      .modal code {
+        background: var(--panel);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 12px;
+      }
+      .modal a {
+        color: var(--accent2);
       }
       .controls {
         padding: 10px 12px 4px;
@@ -184,10 +238,10 @@
         margin-top: 1px;
         color: var(--dim);
         font-weight: 400;
-        font-size: 11px;
+        font-size: 8px;
       }
       .note {
-        padding: 4px 16px 0;
+        padding: 4px 16px 10px;
         color: var(--dim);
         font-size: 11px;
       }
@@ -204,11 +258,12 @@
         td {
           padding: 8px 5px;
         }
-        td.team,
-        th.teamhead {
-          white-space: normal;
-          line-height: 1.2;
+        /* Keep the name on one line; scroll it within a fixed-width cell
+           instead of wrapping onto extra lines. */
+        .tname {
+          display: block;
           max-width: 150px;
+          overflow-x: auto;
         }
       }
 
@@ -244,8 +299,7 @@
       <header>
         <h1>World Cup 2026 — The Alternate Table</h1>
         <div class="sub">
-          Points & goals for all 48 teams, per person or per dollar of GDP · tap
-          a column to sort
+          Points, goals, and goal difference for all 48 teams, per million people, per billions of dollars of GDP, or per GDP/capita.
         </div>
       </header>
 
@@ -258,7 +312,8 @@
         </div>
       </div>
       <div class="note">
-        <span id="status"></span><span id="colinfo"></span>
+        <span id="status"></span> ·
+        <a href="#" id="explain" class="explain">Explain</a>
       </div>
 
       <div class="wrap">
@@ -268,6 +323,59 @@
           </thead>
           <tbody id="body"></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="modal" id="modal" hidden>
+      <div class="modal-inner">
+        <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+        <h2>Why</h2>
+        <body class="sec">I've often found myself wondering if teams are over-performing or underperforming based on a number of different factors. Population size (how many people might be able to play in a nation?), GDP (how large is that nation's economy by some inadequate but fairly standardized measure), or GDP/capita (a measure of average wealth per person).</body>
+      </br />
+      </br />
+
+        <h2>Column key</h2>
+
+        <div class="sec">Scaling</div>
+        <ul>
+          <li><code>/p</code> per million people</li>
+          <li><code>/$</code> per US$ billion of GDP</li>
+          <li><code>/$p</code> per US$1,000 of GDP per capita</li>
+        </ul>
+
+        <div class="sec">Columns</div>
+        <ul>
+          <li><b>Pts</b> points (3 for a win, 1 for a draw)</li>
+          <li><b>GF</b> goals for, <b>GA</b> goals against, <b>GD</b> goal
+            difference</li>
+          <li><b>Pld</b> matches played, <b>W</b>/<b>D</b>/<b>L</b> won / drawn
+            / lost</li>
+          <li><b>Grp</b> group</li>
+          <li><b>Pop</b> population (millions), <b>GDP</b> GDP nominal (US$
+            billions), <b>$/cap</b> GDP per capita</li>
+        </ul>
+
+        <div class="sec">Sources</div>
+        <ul>
+          <li>
+            Population:
+            <a
+              href="https://en.wikipedia.org/wiki/List_of_countries_and_dependencies_by_population"
+              target="_blank"
+              rel="noopener"
+              >Wikipedia</a
+            >
+          </li>
+          <li>
+            GDP (nominal):
+            <a
+              href="https://en.wikipedia.org/wiki/List_of_countries_by_GDP_(nominal)"
+              target="_blank"
+              rel="noopener"
+              >Wikipedia</a
+            >
+          </li>
+        </ul>
       </div>
     </div>
 
@@ -866,14 +974,9 @@
               : "";
             const cells = cols.map((c) => `<td>${display(r, c)}</td>`).join("");
             const meta = `<span class="meta">(${fmtPop(r.pop)}, ${fmtGdp(r.gdp)})</span>`;
-            return `<tr><td class="rank">${i + 1}</td><td class="team">${flag}${r.name}${meta}</td>${cells}</tr>`;
+            return `<tr><td class="rank">${i + 1}</td><td class="team"><span class="tname">${flag}${r.name}</span>${meta}</td>${cells}</tr>`;
           })
           .join("");
-
-        // explain the selected column (green), inline in the status line
-        document.getElementById("colinfo").innerHTML = col
-          ? ` · <span class="cx">${colLabel(col)}: ${colTitle(col)}</span>`
-          : "";
 
         // header click sort
         head.querySelectorAll("th.col").forEach((th) => {
@@ -1024,6 +1127,22 @@
             state.sortKey = RAW_OF[state.sortKey];
           render();
         };
+      });
+
+      // "Explain" modal: open/close.
+      const modal = document.getElementById("modal");
+      document.getElementById("explain").onclick = (e) => {
+        e.preventDefault();
+        modal.hidden = false;
+      };
+      document.getElementById("modal-close").onclick = () => {
+        modal.hidden = true;
+      };
+      modal.onclick = (e) => {
+        if (e.target === modal) modal.hidden = true; // click backdrop to close
+      };
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") modal.hidden = true;
       });
 
       load(false);
