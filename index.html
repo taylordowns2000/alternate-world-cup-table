@@ -59,6 +59,11 @@
         color: var(--dim);
         font-size: 12px;
       }
+      /* Live explanation of the selected column (bright green), inline in the
+         status line. */
+      .cx {
+        color: var(--accent);
+      }
       .controls {
         padding: 10px 12px 4px;
       }
@@ -71,11 +76,13 @@
       }
       .toggle button {
         flex: 1;
+        min-width: 0; /* allow equal shrink so all modes fit on narrow screens */
         background: var(--panel);
         color: var(--dim);
         border: 0;
-        padding: 9px 8px;
-        font-size: 13px;
+        padding: 9px 6px;
+        font-size: 12px;
+        line-height: 1.15;
         cursor: pointer;
       }
       .toggle button.on {
@@ -250,7 +257,9 @@
           <button data-mode="raw">Unscaled</button>
         </div>
       </div>
-      <div class="note" id="status"></div>
+      <div class="note">
+        <span id="status"></span><span id="colinfo"></span>
+      </div>
 
       <div class="wrap">
         <table id="tbl">
@@ -794,19 +803,50 @@
         return c.label;
       }
 
+      // Full-text explanation for the header tooltip (desktop hover).
+      function colTitle(c) {
+        const base =
+          {
+            pts: "Points",
+            gf: "Goals scored",
+            gd: "Goal difference",
+            pop: "Population (millions)",
+            gdp: "GDP (US$ billions)",
+            gdppc: "GDP per capita",
+            group: "Group",
+            pld: "Matches played",
+            w: "Won",
+            d: "Drawn",
+            l: "Lost",
+            rgf: "Goals for",
+            rga: "Goals against",
+            rgd: "Goal difference",
+            rpts: "Points",
+          }[c.key] || c.label;
+        if (c.scale && state.mode !== "raw") {
+          const per = {
+            pc: "per million people",
+            gdp: "per US$ billion of GDP",
+            gdppc: "per US$1,000 of GDP per capita",
+          }[state.mode];
+          return `${base} ${per}`;
+        }
+        return base;
+      }
+
       function render() {
         const cols = activeCols();
         if (!cols.some((c) => c.key === state.sortKey))
           state.sortKey = state.mode === "raw" ? "rpts" : "pts";
         const head = document.getElementById("head");
         head.innerHTML =
-          `<th class="rank">#</th><th class="teamhead">Team</th>` +
+          `<th class="rank" title="Rank">#</th><th class="teamhead" title="Team">Team</th>` +
           cols
             .map((c) => {
               const sorted = c.key === state.sortKey ? " sorted" : "";
               const arrow =
                 c.key === state.sortKey ? (state.dir < 0 ? " ↓" : " ↑") : "";
-              return `<th class="col${sorted}" data-key="${c.key}">${colLabel(c)}${arrow}</th>`;
+              return `<th class="col${sorted}" data-key="${c.key}" title="${colTitle(c)}">${colLabel(c)}${arrow}</th>`;
             })
             .join("");
 
@@ -829,6 +869,11 @@
             return `<tr><td class="rank">${i + 1}</td><td class="team">${flag}${r.name}${meta}</td>${cells}</tr>`;
           })
           .join("");
+
+        // explain the selected column (green), inline in the status line
+        document.getElementById("colinfo").innerHTML = col
+          ? ` · <span class="cx">${colLabel(col)}: ${colTitle(col)}</span>`
+          : "";
 
         // header click sort
         head.querySelectorAll("th.col").forEach((th) => {
@@ -956,13 +1001,27 @@
         }
       }
 
+      // Equivalent columns across the scaled/raw divide, so the sort carries
+      // over (e.g. Unscaled "Pts" -> "Pts/x" when switching to a scaled view).
+      const SCALED_OF = { rpts: "pts", rgf: "gf", rgd: "gd" };
+      const RAW_OF = { pts: "rpts", gf: "rgf", gd: "rgd" };
+
       document.querySelectorAll("#mode button").forEach((b) => {
         b.onclick = () => {
+          const prev = state.mode;
           document
             .querySelectorAll("#mode button")
             .forEach((x) => x.classList.remove("on"));
           b.classList.add("on");
           state.mode = b.dataset.mode;
+          if (prev === "raw" && state.mode !== "raw" && SCALED_OF[state.sortKey])
+            state.sortKey = SCALED_OF[state.sortKey];
+          else if (
+            prev !== "raw" &&
+            state.mode === "raw" &&
+            RAW_OF[state.sortKey]
+          )
+            state.sortKey = RAW_OF[state.sortKey];
           render();
         };
       });
