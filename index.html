@@ -710,10 +710,10 @@
         if (g >= 1000) return "$" + (g / 1000).toFixed(1) + "T";
         return "$" + (g >= 10 ? Math.round(g) : g.toFixed(1)) + "B";
       }
-      // Numeric cell value, capped at 2 decimals (trailing zeros dropped).
+      // Numeric cell value, capped at 3 decimals (trailing zeros dropped).
       function fmtNum(v) {
         if (!isFinite(v)) return "∞";
-        return String(Math.round(v * 100) / 100);
+        return String(Math.round(v * 1000) / 1000);
       }
 
       function display(r, col) {
