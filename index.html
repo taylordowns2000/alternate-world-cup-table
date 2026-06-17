@@ -34,7 +34,7 @@
          stay fixed at the top; only the table area scrolls (see .wrap). This
          keeps the wide table contained so the whole thing stays centered. */
       .container {
-        max-width: 640px;
+        max-width: 900px;
         height: 100vh;
         height: 100dvh;
         margin: 0 auto;
@@ -216,6 +216,20 @@
       }
     </style>
   </head>
+  <!-- Google tag (gtag.js) -->
+  <script
+    async
+    src="https://www.googletagmanager.com/gtag/js?id=G-QLF0QPK56P"
+  ></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+    gtag("js", new Date());
+
+    gtag("config", "G-QLF0QPK56P");
+  </script>
   <body>
     <div class="container">
       <header>
@@ -643,8 +657,22 @@
       // The scaled headline columns (Pts/Goals/GD) are hidden in Per FIFA view,
       // where they'd just duplicate the raw conventional block on the right.
       const COLS = [
-        { key: "pts", label: "Pts", get: (r) => r.pts, scale: true, num: true, hideInRaw: true },
-        { key: "gf", label: "Goals", get: (r) => r.gf, scale: true, num: true, hideInRaw: true },
+        {
+          key: "pts",
+          label: "Pts",
+          get: (r) => r.pts,
+          scale: true,
+          num: true,
+          hideInRaw: true,
+        },
+        {
+          key: "gf",
+          label: "GF",
+          get: (r) => r.gf,
+          scale: true,
+          num: true,
+          hideInRaw: true,
+        },
         {
           key: "gd",
           label: "GD",
@@ -676,9 +704,23 @@
       // per-GDP view, nothing in Per FIFA view.
       function refCol() {
         if (state.mode === "pc")
-          return { key: "pop", label: "Pop", get: (r) => r.pop, fmt: fmtPop, ref: true, num: true };
+          return {
+            key: "pop",
+            label: "Pop",
+            get: (r) => r.pop,
+            fmt: fmtPop,
+            ref: true,
+            num: true,
+          };
         if (state.mode === "gdp")
-          return { key: "gdp", label: "GDP", get: (r) => r.gdp, fmt: fmtGdp, ref: true, num: true };
+          return {
+            key: "gdp",
+            label: "GDP",
+            get: (r) => r.gdp,
+            fmt: fmtGdp,
+            ref: true,
+            num: true,
+          };
         return null;
       }
       function activeCols() {
@@ -703,7 +745,8 @@
       }
       // Compact population / GDP labels, e.g. "5.5M" and "$265B" (or "$29.2T").
       function fmtPop(p) {
-        const n = p >= 1 ? (p % 1 === 0 ? String(p) : p.toFixed(1)) : p.toFixed(2);
+        const n =
+          p >= 1 ? (p % 1 === 0 ? String(p) : p.toFixed(1)) : p.toFixed(2);
         return n + "M";
       }
       function fmtGdp(g) {
@@ -735,12 +778,14 @@
         const head = document.getElementById("head");
         head.innerHTML =
           `<th class="rank">#</th><th class="teamhead">Team</th>` +
-          cols.map((c) => {
-            const sorted = c.key === state.sortKey ? " sorted" : "";
-            const arrow =
-              c.key === state.sortKey ? (state.dir < 0 ? " ↓" : " ↑") : "";
-            return `<th class="col${sorted}" data-key="${c.key}">${colLabel(c)}${arrow}</th>`;
-          }).join("");
+          cols
+            .map((c) => {
+              const sorted = c.key === state.sortKey ? " sorted" : "";
+              const arrow =
+                c.key === state.sortKey ? (state.dir < 0 ? " ↓" : " ↑") : "";
+              return `<th class="col${sorted}" data-key="${c.key}">${colLabel(c)}${arrow}</th>`;
+            })
+            .join("");
 
         const col = cols.find((c) => c.key === state.sortKey);
         const rows = [...state.rows].sort((a, b) => {
