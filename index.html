@@ -303,7 +303,8 @@
       <header>
         <h1>World Cup 2026 — The Alternate Table</h1>
         <div class="sub">
-          Points, goals, and goal difference for all 48 teams, per million people, per billions of dollars of GDP, or per GDP/capita.
+          Points, goals, and goal difference for all 48 teams, per million
+          people, per billions of dollars of GDP, or per GDP/capita.
         </div>
       </header>
 
@@ -332,9 +333,23 @@
 
     <div class="modal" id="modal" hidden>
       <div class="modal-inner">
-        <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+        <button class="modal-close" id="modal-close" aria-label="Close">
+          ×
+        </button>
         <h2>Why?</h2>
-        <p class="why">I've often found myself wondering how teams are performing based on a number of different factors. Population size (how many people might be able to play in a nation?), GDP (how large is that nation's economy by some inadequate but fairly standardized measure?), or GDP/capita (how wealthy are the people in that country?) and surprised that no basic, up-to-date table like this existed for WC2026.</p>
+        <p class="why">
+          I've often found myself wondering how teams are performing based on a
+          number of different factors. Population size (how many people might be
+          able to play in a nation?), GDP (how large is that nation's economy by
+          some inadequate but fairly standardized measure?), or GDP/capita (how
+          wealthy are the people in that country?) and surprised that no basic,
+          up-to-date table like this existed for WC2026.
+        </p>
+
+        <p class="why">
+          Note that scores may be a few minutes delayed, but are provided mostly
+          excellently by football-data.org ❤️
+        </p>
 
         <h2>Column key</h2>
 
@@ -348,13 +363,19 @@
         <div class="sec">Columns</div>
         <ul>
           <li><b>Pts</b> points (3 for a win, 1 for a draw)</li>
-          <li><b>GF</b> goals for, <b>GA</b> goals against, <b>GD</b> goal
-            difference</li>
-          <li><b>Pld</b> matches played, <b>W</b>/<b>D</b>/<b>L</b> won / drawn
-            / lost</li>
+          <li>
+            <b>GF</b> goals for, <b>GA</b> goals against, <b>GD</b> goal
+            difference
+          </li>
+          <li>
+            <b>Pld</b> matches played, <b>W</b>/<b>D</b>/<b>L</b> won / drawn /
+            lost
+          </li>
           <li><b>Grp</b> group</li>
-          <li><b>Pop</b> population (millions), <b>GDP</b> GDP nominal (US$
-            billions), <b>$/cap</b> GDP per capita</li>
+          <li>
+            <b>Pop</b> population (millions), <b>GDP</b> GDP nominal (US$
+            billions), <b>$/cap</b> GDP per capita
+          </li>
         </ul>
 
         <div class="sec">Sources</div>
@@ -375,6 +396,15 @@
               target="_blank"
               rel="noopener"
               >Wikipedia</a
+            >
+          </li>
+          <li>
+            Scores & goals:
+            <a
+              href="https://www.football-data.org"
+              target="_blank"
+              rel="noopener"
+              >Football-Data.org</a
             >
           </li>
         </ul>
@@ -1119,7 +1149,11 @@
             .forEach((x) => x.classList.remove("on"));
           b.classList.add("on");
           state.mode = b.dataset.mode;
-          if (prev === "raw" && state.mode !== "raw" && SCALED_OF[state.sortKey])
+          if (
+            prev === "raw" &&
+            state.mode !== "raw" &&
+            SCALED_OF[state.sortKey]
+          )
             state.sortKey = SCALED_OF[state.sortKey];
           else if (
             prev !== "raw" &&
