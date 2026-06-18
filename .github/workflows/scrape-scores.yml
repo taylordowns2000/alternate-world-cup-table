@@ -1,0 +1,29 @@
+name: Scrape scores
+
+on:
+  schedule:
+    # Every 5 minutes (the finest granularity GitHub Actions cron allows).
+    # Note: scheduled runs can be delayed by a few minutes under platform load.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {} # lets you run it manually from the Actions tab
+
+# Don't pile up overlapping runs if one is slow.
+concurrency:
+  group: scrape-scores
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Run scraper
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scrape-scores.mjs
