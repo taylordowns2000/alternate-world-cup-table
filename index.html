@@ -15,6 +15,8 @@
         --accent: #4ade80;
         --accent2: #38bdf8;
         --accent-ink: #15803d; /* darker green, readable as text/links on white */
+        --live: #ecfdf5; /* light green row tint for teams playing right now */
+        --live-hover: #d1fae5;
       }
       * {
         box-sizing: border-box;
@@ -44,7 +46,8 @@
       }
       header,
       .controls,
-      .note {
+      .note,
+      #live {
         flex: 0 0 auto;
       }
       header {
@@ -305,6 +308,54 @@
         font-size: 11px;
       }
 
+      /* Teams whose match is in progress: green row + green name. The sticky
+         rank/team cells set their own background, so they need it re-applied
+         here or they'd punch white holes through the tint. */
+      tr.live td,
+      tr.live td.rank,
+      tr.live td.team {
+        background: var(--live);
+      }
+      tr.live:hover td {
+        background: var(--live-hover);
+      }
+      tr.live .tname {
+        color: var(--accent-ink);
+        font-weight: 700;
+      }
+
+      /* Live-match ticker, directly under the status line. Same small size as
+         .note; tinted green to read as "in progress". */
+      #live[hidden] {
+        display: none;
+      }
+      #live {
+        padding: 0 16px 8px;
+        margin-top: -4px;
+        color: var(--accent-ink);
+        font-size: 11px;
+        line-height: 1.6;
+      }
+      #live .lrow {
+        font-variant-numeric: tabular-nums;
+      }
+      #live .dot {
+        color: var(--accent);
+        animation: livepulse 1.6s ease-in-out infinite;
+      }
+      #live .min {
+        font-weight: 700;
+      }
+      @keyframes livepulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
       /* Mobile: tighten spacing, let long team names wrap. */
       @media (max-width: 560px) {
         body {
@@ -355,6 +406,10 @@
         <span id="status"></span> ·
         <a href="#" id="explain" class="explain">Explain</a>
       </div>
+
+      <!-- Live ticker: one line per in-progress match (minute + current score).
+           Populated by renderLive(); hidden when nothing is being played. -->
+      <div id="live" hidden></div>
 
       <div class="controls">
         <div class="toggle" id="mode">
@@ -487,7 +542,7 @@
       const SOURCES = [
         {
           name: 'Supabase (your DB)',
-          url: `${SUPABASE.url}/rest/v1/matches?select=team1,team2,score1,score2,status,updated_at`,
+          url: `${SUPABASE.url}/rest/v1/matches?select=team1,team2,score1,score2,status,kickoff,updated_at`,
           headers: {
             apikey: SUPABASE.anonKey,
             Authorization: `Bearer ${SUPABASE.anonKey}`,
@@ -506,7 +561,7 @@
           parse: parseOpenfootball,
         },
       ];
-      const CACHE_KEY = 'wc2026_matches_v2';
+      const CACHE_KEY = 'wc2026_matches_v3';
       const CACHE_TTL = 30 * 1000; // 30s — instant paint on quick reloads
       const REFRESH_MS = 60 * 1000; // auto-refresh cadence while the page is open
 
@@ -656,6 +711,7 @@
         sortKey: 'pts',
         dir: -1,
         rows: [],
+        live: [], // matches currently in progress (for the green tint + ticker)
         updated: null,
       };
 
@@ -682,18 +738,30 @@
       // --- Source parsers: each returns a normalized [{team1, team2, score:{ft:[h,a]}}] ---
 
       // Supabase (PostgREST) returns the matches table verbatim as an array of
-      // { team1, team2, score1, score2, status }. A row counts as played once
-      // both scores are non-null — unplayed fixtures (null scores) score nothing.
+      // { team1, team2, score1, score2, status, kickoff }. Scores from
+      // football-data.org are real time, so an in-progress match also carries a
+      // (running) score. We keep the two apart:
+      //   • score.ft — set ONLY for FINISHED matches; this is what feeds the
+      //     standings table and the "played" count. A live 2–0 must not award
+      //     points before the final whistle.
+      //   • live     — the current running score for matches in progress
+      //     (status in_play / paused), shown in the live ticker, not the table.
       function parseSupabase(json) {
         const rows = Array.isArray(json) ? json : [];
         return rows.map(r => {
           const hg = r.score1,
             ag = r.score2;
-          const played = hg != null && ag != null;
+          const status = String(r.status || '').toLowerCase();
+          const haveScore = hg != null && ag != null;
+          const finished = status === 'finished' && haveScore;
+          const ongoing = status === 'in_play' || status === 'paused';
           return {
             team1: r.team1,
             team2: r.team2,
-            score: { ft: played ? [Number(hg), Number(ag)] : null },
+            score: { ft: finished ? [Number(hg), Number(ag)] : null },
+            live: ongoing ? [Number(hg) || 0, Number(ag) || 0] : null,
+            status,
+            kickoff: r.kickoff || null,
             updated: r.updated_at, // when this row last changed in the DB
           };
         });
@@ -1016,6 +1084,57 @@
         return base;
       }
 
+      // football-data.org's free tier doesn't expose a live `minute`, so we
+      // estimate it from kickoff. We can't know real stoppage time and assume a
+      // ~15-min half-time, so it's necessarily approximate; capped at "90'+"
+      // once we're clearly past full time. 'paused' (half-time) → "HT".
+      function liveMinute(kickoff, status) {
+        if (status === 'paused') return 'HT';
+        if (!kickoff) return null;
+        const mins = Math.floor((Date.now() - Date.parse(kickoff)) / 60000);
+        if (!isFinite(mins) || mins < 0) return null; // not kicked off / clock skew
+        if (mins <= 47) return `${Math.max(1, mins)}'`; // first half (+ a little stoppage)
+        if (mins <= 62) return 'HT'; // ~15-min half-time window
+        if (mins <= 107) return `${mins - 15}'`; // second half, minus the break
+        return `90'+`;
+      }
+
+      // Matches in progress, normalized for the ticker. Only the Supabase source
+      // carries a `live` running score; other sources simply yield none.
+      function collectLive(matches) {
+        return matches
+          .filter(m => Array.isArray(m.live))
+          .map(m => ({
+            team1: canon(m.team1),
+            team2: canon(m.team2),
+            score: m.live,
+            status: m.status,
+            kickoff: m.kickoff,
+          }));
+      }
+
+      // Render the live ticker: one line per ongoing match, "minute · score".
+      function renderLive() {
+        const el = document.getElementById('live');
+        const live = state.live || [];
+        if (!live.length) {
+          el.hidden = true;
+          el.innerHTML = '';
+          return;
+        }
+        el.hidden = false;
+        el.innerHTML = live
+          .map(m => {
+            const f1 = FLAG[m.team1] ? FLAG[m.team1] + ' ' : '';
+            const f2 = FLAG[m.team2] ? ' ' + FLAG[m.team2] : '';
+            const [h, a] = m.score;
+            const min = liveMinute(m.kickoff, m.status);
+            const minTxt = min ? ` · <span class="min">${min}</span>` : '';
+            return `<div class="lrow"><span class="dot">●</span> ${f1}${m.team1} <b>${h}–${a}</b> ${m.team2}${f2}${minTxt}</div>`;
+          })
+          .join('');
+      }
+
       function render() {
         const cols = activeCols();
         if (!cols.some(c => c.key === state.sortKey))
@@ -1042,15 +1161,23 @@
             return b.pts - a.pts; // stable tiebreak
           });
 
+        // Teams whose match is in progress — their rows get the green .live tint.
+        const liveSet = new Set();
+        (state.live || []).forEach(m => {
+          liveSet.add(m.team1);
+          liveSet.add(m.team2);
+        });
+
         // One standings row. `rank` is the position within its list (1-based):
         // 1..48 overall, or 1..4 within each group in group view.
         const rowHtml = (r, rank) => {
           const flag = FLAG[r.name]
             ? `<span class="flag">${FLAG[r.name]}</span>`
             : '';
+          const cls = liveSet.has(r.name) ? ' class="live"' : '';
           const cells = cols.map(c => `<td>${display(r, c)}</td>`).join('');
           const meta = `<span class="meta">(${fmtPop(r.pop)}, ${fmtGdp(r.gdp)}, ${r.group})</span>`;
-          return `<tr><td class="rank">${rank}</td><td class="team"><span class="tname">${flag}${r.name}</span>${meta}</td>${cells}</tr>`;
+          return `<tr${cls}><td class="rank">${rank}</td><td class="team"><span class="tname">${flag}${r.name}</span>${meta}</td>${cells}</tr>`;
         };
 
         let bodyHtml;
@@ -1084,6 +1211,8 @@
             render();
           };
         });
+
+        renderLive();
       }
 
       function setStatus(msg) {
@@ -1152,6 +1281,7 @@
         const cached = fromCache();
         if (cached && !cached.stale && !force) {
           state.rows = buildTable(cached.matches);
+          state.live = collectLive(cached.matches);
           state.updated = cached.u || cached.t;
           render();
           setStatus(statusLine(cached.matches, state.updated));
@@ -1189,6 +1319,7 @@
             })
           );
           state.rows = buildTable(best.matches);
+          state.live = collectLive(best.matches);
           state.updated = dataT;
           render();
           setStatus(statusLine(best.matches, dataT));
@@ -1198,12 +1329,14 @@
         // total failure — fall back to cache or zeros
         if (cached) {
           state.rows = buildTable(cached.matches);
+          state.live = collectLive(cached.matches);
           render();
           setStatus(
             'offline · ' + statusLine(cached.matches, cached.u || cached.t)
           );
         } else {
           state.rows = Object.keys(TEAMS).map(blankRow);
+          state.live = [];
           render();
           setStatus('no data yet — retrying…');
         }
