@@ -14,6 +14,7 @@
         --hover: #f2f5f8;
         --accent: #4ade80;
         --accent2: #38bdf8;
+        --accent-ink: #15803d; /* darker green, readable as text/links on white */
       }
       * {
         box-sizing: border-box;
@@ -122,31 +123,62 @@
       .modal a {
         color: var(--accent2);
       }
+      /* Two segmented button groups (scaling, then grouping) sitting side by
+         side, left aligned. */
       .controls {
-        padding: 10px 12px 4px;
-      }
-      .toggle {
         display: flex;
-        width: 100%;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        overflow: hidden;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        padding: 4px 16px 10px;
+      }
+      /* Connected white buttons translated from the Tailwind button-group
+         pattern: a 1px gray inset ring, rounded outer corners, subtle shadow. */
+      .toggle {
+        isolation: isolate; /* keep focus/selected z-index local to the group */
+        display: inline-flex;
+        border-radius: 6px;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); /* shadow-xs */
       }
       .toggle button {
-        flex: 1;
-        min-width: 0; /* allow equal shrink so all modes fit on narrow screens */
-        background: var(--panel);
-        color: var(--dim);
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 10px; /* py-2, slightly tighter than px-3 to fit mobile */
         border: 0;
-        padding: 9px 6px;
-        font-size: 12px;
-        line-height: 1.15;
+        background: #fff;
+        color: #374151; /* gray-700: softer than near-black gray-900 */
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500; /* medium: less heavy than semibold */
+        line-height: 1.25rem;
+        white-space: nowrap;
         cursor: pointer;
+        box-shadow: inset 0 0 0 1px #d1d5db; /* inset-ring gray-300 */
       }
+      .toggle button + button {
+        margin-left: -1px; /* collapse the shared 1px border */
+      }
+      .toggle button:first-child {
+        border-top-left-radius: 6px;
+        border-bottom-left-radius: 6px;
+      }
+      .toggle button:last-child {
+        border-top-right-radius: 6px;
+        border-bottom-right-radius: 6px;
+      }
+      .toggle button:hover {
+        background: #f9fafb; /* gray-50 */
+      }
+      .toggle button:focus {
+        z-index: 10;
+      }
+      /* Selected segment: fully green, raised so its ring sits on top. */
       .toggle button.on {
+        z-index: 10;
         background: var(--accent);
         color: #06210f;
-        font-weight: 600;
+        box-shadow: inset 0 0 0 1px var(--accent);
       }
       /* The only scroll region: fills the remaining height and scrolls both
          axes. The sticky header (top) and sticky rank/team columns (left)
@@ -233,9 +265,32 @@
       .flag {
         margin-right: 6px;
       }
-      .grp {
+      /* Tiny gray gloss after the "Team" header: "(pop, gdp, grp)". */
+      .hint {
+        font-size: 9px;
+        font-weight: 400;
+        color: var(--dim);
+        text-transform: none; /* th is uppercased; keep this lowercase */
+        letter-spacing: 0;
+      }
+      /* Section header row in group view ("Group A" … "Group L"). One full-width
+         cell, pinned left so the label stays put when the stats scroll across. */
+      .grouphdr .ghd {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background: var(--panel);
         color: var(--dim);
         font-size: 11px;
+        font-weight: 700;
+        text-align: left;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      .grouphdr:hover td {
+        background: var(--panel);
       }
       .meta {
         display: block;
@@ -270,18 +325,6 @@
           overflow-x: auto;
         }
       }
-
-      /* Wider screens: let the picker shrink to its content instead of filling. */
-      @media (min-width: 561px) {
-        .toggle {
-          display: inline-flex;
-          width: auto;
-        }
-        .toggle button {
-          flex: 0 0 auto;
-          padding: 9px 18px;
-        }
-      }
     </style>
   </head>
   <!-- Google tag (gtag.js) -->
@@ -308,6 +351,11 @@
         </div>
       </header>
 
+      <div class="note">
+        <span id="status"></span> ·
+        <a href="#" id="explain" class="explain">Explain</a>
+      </div>
+
       <div class="controls">
         <div class="toggle" id="mode">
           <button data-mode="pc" class="on">Per capita</button>
@@ -315,10 +363,10 @@
           <button data-mode="gdppc">Per GDP/capita</button>
           <button data-mode="raw">Unscaled</button>
         </div>
-      </div>
-      <div class="note">
-        <span id="status"></span> ·
-        <a href="#" id="explain" class="explain">Explain</a>
+        <div class="toggle" id="view">
+          <button data-view="overall" class="on">Overall</button>
+          <button data-view="group">By group</button>
+        </div>
       </div>
 
       <div class="wrap">
@@ -603,6 +651,7 @@
 
       let state = {
         mode: 'pc',
+        view: 'overall', // 'overall' = all 48 ranked; 'group' = split A–L, 1–4 each
         sortKey: 'pts',
         dir: -1,
         rows: [],
@@ -822,7 +871,7 @@
         },
         {
           key: 'gf',
-          label: 'GF',
+          label: 'Goals',
           get: r => r.gf,
           scale: true,
           num: true,
@@ -835,13 +884,6 @@
           scale: true,
           num: true,
           hideInRaw: true,
-        },
-        {
-          key: 'group',
-          label: 'Grp',
-          get: r => r.group,
-          fmt: v => `<span class="grp">${v}</span>`,
-          num: false,
         },
         { key: 'pld', label: 'Pld', get: r => r.pld, num: true },
         { key: 'w', label: 'W', get: r => r.w, num: true },
@@ -953,7 +995,6 @@
             pop: 'Population (millions)',
             gdp: 'GDP (US$ billions)',
             gdppc: 'GDP per capita',
-            group: 'Group',
             pld: 'Matches played',
             w: 'Won',
             d: 'Drawn',
@@ -980,7 +1021,7 @@
           state.sortKey = state.mode === 'raw' ? 'rpts' : 'pts';
         const head = document.getElementById('head');
         head.innerHTML =
-          `<th class="rank" title="Rank">#</th><th class="teamhead" title="Team">Team</th>` +
+          `<th class="rank" title="Rank">#</th><th class="teamhead" title="Team">Team <span class="hint">(pop, gdp, grp)</span></th>` +
           cols
             .map(c => {
               const sorted = c.key === state.sortKey ? ' sorted' : '';
@@ -991,24 +1032,44 @@
             .join('');
 
         const col = cols.find(c => c.key === state.sortKey);
-        const rows = [...state.rows].sort((a, b) => {
-          let av = col ? val(a, col) : 0;
-          let bv = col ? val(b, col) : 0;
-          if (av < bv) return -state.dir;
-          if (av > bv) return state.dir;
-          return b.pts - a.pts; // stable tiebreak
-        });
+        const sortRows = list =>
+          [...list].sort((a, b) => {
+            let av = col ? val(a, col) : 0;
+            let bv = col ? val(b, col) : 0;
+            if (av < bv) return -state.dir;
+            if (av > bv) return state.dir;
+            return b.pts - a.pts; // stable tiebreak
+          });
 
-        document.getElementById('body').innerHTML = rows
-          .map((r, i) => {
-            const flag = FLAG[r.name]
-              ? `<span class="flag">${FLAG[r.name]}</span>`
-              : '';
-            const cells = cols.map(c => `<td>${display(r, c)}</td>`).join('');
-            const meta = `<span class="meta">(${fmtPop(r.pop)}, ${fmtGdp(r.gdp)})</span>`;
-            return `<tr><td class="rank">${i + 1}</td><td class="team"><span class="tname">${flag}${r.name}</span>${meta}</td>${cells}</tr>`;
-          })
-          .join('');
+        // One standings row. `rank` is the position within its list (1-based):
+        // 1..48 overall, or 1..4 within each group in group view.
+        const rowHtml = (r, rank) => {
+          const flag = FLAG[r.name]
+            ? `<span class="flag">${FLAG[r.name]}</span>`
+            : '';
+          const cells = cols.map(c => `<td>${display(r, c)}</td>`).join('');
+          const meta = `<span class="meta">(${fmtPop(r.pop)}, ${fmtGdp(r.gdp)}, ${r.group})</span>`;
+          return `<tr><td class="rank">${rank}</td><td class="team"><span class="tname">${flag}${r.name}</span>${meta}</td>${cells}</tr>`;
+        };
+
+        let bodyHtml;
+        if (state.view === 'group') {
+          // Split into A..L sections, each sorted and ranked 1..4 on its own.
+          const span = 2 + cols.length; // rank + team + the active stat columns
+          const groups = [...new Set(state.rows.map(r => r.group))].sort();
+          bodyHtml = groups
+            .map(g => {
+              const gr = sortRows(state.rows.filter(r => r.group === g));
+              const hdr = `<tr class="grouphdr"><td class="ghd" colspan="${span}">Group ${g}</td></tr>`;
+              return hdr + gr.map((r, i) => rowHtml(r, i + 1)).join('');
+            })
+            .join('');
+        } else {
+          bodyHtml = sortRows(state.rows)
+            .map((r, i) => rowHtml(r, i + 1))
+            .join('');
+        }
+        document.getElementById('body').innerHTML = bodyHtml;
 
         // header click sort
         head.querySelectorAll('th.col').forEach(th => {
@@ -1160,6 +1221,19 @@
             RAW_OF[state.sortKey]
           )
             state.sortKey = RAW_OF[state.sortKey];
+          render();
+        };
+      });
+
+      // Overall vs. by-group view. Independent of the scaling mode above; the
+      // active sort key carries straight over (within-group in group view).
+      document.querySelectorAll('#view button').forEach(b => {
+        b.onclick = () => {
+          document
+            .querySelectorAll('#view button')
+            .forEach(x => x.classList.remove('on'));
+          b.classList.add('on');
+          state.view = b.dataset.view;
           render();
         };
       });
