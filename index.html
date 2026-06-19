@@ -739,13 +739,13 @@
 
       // Supabase (PostgREST) returns the matches table verbatim as an array of
       // { team1, team2, score1, score2, status, kickoff }. Scores from
-      // football-data.org are real time, so an in-progress match also carries a
-      // (running) score. We keep the two apart:
-      //   • score.ft — set ONLY for FINISHED matches; this is what feeds the
-      //     standings table and the "played" count. A live 2–0 must not award
-      //     points before the final whistle.
-      //   • live     — the current running score for matches in progress
-      //     (status in_play / paused), shown in the live ticker, not the table.
+      // football-data.org are real time, so an in-progress match already carries
+      // a running score. This is a LIVE table: any match with a score counts —
+      //   • score.ft — the score, final or running. It feeds the standings and
+      //     the "played" count, so an in-progress match contributes its points
+      //     provisionally (i.e. "what the table would be if games ended now").
+      //   • live     — set only for matches in progress (status in_play /
+      //     paused); drives the green row tint and the live ticker.
       function parseSupabase(json) {
         const rows = Array.isArray(json) ? json : [];
         return rows.map(r => {
@@ -753,12 +753,11 @@
             ag = r.score2;
           const status = String(r.status || '').toLowerCase();
           const haveScore = hg != null && ag != null;
-          const finished = status === 'finished' && haveScore;
           const ongoing = status === 'in_play' || status === 'paused';
           return {
             team1: r.team1,
             team2: r.team2,
-            score: { ft: finished ? [Number(hg), Number(ag)] : null },
+            score: { ft: haveScore ? [Number(hg), Number(ag)] : null },
             live: ongoing ? [Number(hg) || 0, Number(ag) || 0] : null,
             status,
             kickoff: r.kickoff || null,
