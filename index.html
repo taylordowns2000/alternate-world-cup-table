@@ -376,6 +376,103 @@
           overflow-x: auto;
         }
       }
+
+      /* ---- Bracket view -----------------------------------------------------
+         A left-to-right knockout tree of match cards joined by elbow
+         connectors. Inside each card, the two teams are group-colored dots
+         (flag inside) whose size encodes the active metric (population / GDP /
+         GDP-per-capita / equal). #brk is the only scroll region in this view,
+         and the SVG inside it is sized in px so it scrolls both axes. */
+      #brk[hidden] {
+        display: none;
+      }
+      #brk {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 0 0 12px;
+      }
+      .brk-legend {
+        position: sticky;
+        left: 0;
+        padding: 6px 16px 8px;
+        color: var(--dim);
+        font-size: 11px;
+        line-height: 1.6;
+      }
+      .brk-legend b {
+        color: var(--text);
+      }
+      #brk-svg {
+        display: block;
+      }
+      /* SVG text/shape styling, applied via classes on elements. */
+      .bk-round {
+        fill: var(--dim);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      /* Elbow connectors between match cards. Deliberately a solid mid-gray so
+         the tree structure reads clearly; the advancing path is tinted green. */
+      .bk-link {
+        fill: none;
+        stroke: #c2cad3;
+        stroke-width: 1.75;
+      }
+      .bk-link.win {
+        stroke: var(--accent);
+        stroke-width: 2.5;
+      }
+      /* Match card */
+      .bk-card {
+        fill: var(--panel);
+        stroke: var(--line);
+        stroke-width: 1;
+      }
+      .bk-card.live {
+        stroke: #fca5a5;
+        stroke-width: 1.5;
+      }
+      .bk-when {
+        fill: var(--dim);
+        font-size: 9.5px;
+      }
+      .bk-ft {
+        fill: var(--dim);
+        font-size: 9.5px;
+        font-weight: 700;
+      }
+      .bk-tbd {
+        fill: var(--dim);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .bk-meta {
+        fill: var(--dim);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      .bk-goal {
+        fill: var(--text);
+        font-size: 14px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .bk-goal.lose {
+        fill: var(--dim);
+        font-weight: 400;
+      }
+      .bk-flag {
+        font-size: 15px;
+      }
+      /* Small filled triangle marking the winning row. */
+      .bk-win-mark {
+        fill: var(--accent-ink);
+      }
+      .bk-live-pill {
+        fill: #ef4444;
+        animation: livepulse 1.6s ease-in-out infinite;
+      }
     </style>
   </head>
   <!-- Google tag (gtag.js) -->
@@ -421,6 +518,7 @@
         <div class="toggle" id="view">
           <button data-view="overall" class="on">Overall</button>
           <button data-view="group">By group</button>
+          <button data-view="bracket">Bracket</button>
         </div>
       </div>
 
@@ -431,6 +529,13 @@
           </thead>
           <tbody id="body"></tbody>
         </table>
+      </div>
+
+      <!-- Bracket view (knockout phase). Hidden until the Bracket tab is
+           selected; built by renderBracket() as a single sized <svg>. -->
+      <div id="brk" hidden>
+        <div class="brk-legend" id="brk-legend"></div>
+        <svg id="brk-svg" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
     </div>
 
@@ -543,7 +648,7 @@
       const SOURCES = [
         {
           name: 'Supabase (your DB)',
-          url: `${SUPABASE.url}/rest/v1/matches?select=team1,team2,score1,score2,status,kickoff,updated_at`,
+          url: `${SUPABASE.url}/rest/v1/matches?select=team1,team2,score1,score2,status,stage,kickoff,updated_at`,
           headers: {
             apikey: SUPABASE.anonKey,
             Authorization: `Bearer ${SUPABASE.anonKey}`,
@@ -562,7 +667,7 @@
           parse: parseOpenfootball,
         },
       ];
-      const CACHE_KEY = 'wc2026_matches_v3';
+      const CACHE_KEY = 'wc2026_matches_v4'; // v4 adds `stage` (needed for the bracket)
       const CACHE_TTL = 30 * 1000; // 30s — instant paint on quick reloads
       const REFRESH_MS = 60 * 1000; // auto-refresh cadence while the page is open
 
@@ -711,7 +816,7 @@
         view: 'overall', // 'overall' = all 48 ranked; 'group' = split A–L, 1–4 each
         sortKey: 'pts',
         dir: -1,
-        rows: [],
+        matches: [], // raw normalized matches; rows are derived per-view in render()
         live: [], // matches currently in progress (for the green tint + ticker)
         updated: null,
       };
@@ -761,6 +866,7 @@
             score: { ft: haveScore ? [Number(hg), Number(ag)] : null },
             live: ongoing ? [Number(hg) || 0, Number(ag) || 0] : null,
             status,
+            stage: r.stage || null, // GROUP_STAGE / LAST_32 / LAST_16 / … — drives the bracket
             kickoff: r.kickoff || null,
             updated: r.updated_at, // when this row last changed in the DB
           };
@@ -1139,6 +1245,14 @@
         const cols = activeCols();
         if (!cols.some(c => c.key === state.sortKey))
           state.sortKey = state.mode === 'raw' ? 'rpts' : 'pts';
+        // "By group" counts group-phase games only; "Overall" includes the
+        // knockout results too. Both are derived fresh from the stage-tagged
+        // feed so switching views recomputes without a reload.
+        const matches = state.matches || [];
+        const rows =
+          state.view === 'group'
+            ? buildTable(matches.filter(isGroupMatch))
+            : buildTable(matches);
         const head = document.getElementById('head');
         head.innerHTML =
           `<th class="rank" title="Rank">#</th><th class="teamhead" title="Team">Team <span class="hint">(pop, gdp, grp)</span></th>` +
@@ -1184,16 +1298,16 @@
         if (state.view === 'group') {
           // Split into A..L sections, each sorted and ranked 1..4 on its own.
           const span = 2 + cols.length; // rank + team + the active stat columns
-          const groups = [...new Set(state.rows.map(r => r.group))].sort();
+          const groups = [...new Set(rows.map(r => r.group))].sort();
           bodyHtml = groups
             .map(g => {
-              const gr = sortRows(state.rows.filter(r => r.group === g));
+              const gr = sortRows(rows.filter(r => r.group === g));
               const hdr = `<tr class="grouphdr"><td class="ghd" colspan="${span}">Group ${g}</td></tr>`;
               return hdr + gr.map((r, i) => rowHtml(r, i + 1)).join('');
             })
             .join('');
         } else {
-          bodyHtml = sortRows(state.rows)
+          bodyHtml = sortRows(rows)
             .map((r, i) => rowHtml(r, i + 1))
             .join('');
         }
@@ -1212,6 +1326,462 @@
           };
         });
 
+        renderLive();
+      }
+
+      // ===== Knockout bracket =============================================
+      // The WC2026 tree is fixed and public; the topology below was verified
+      // against live results (e.g. the feed's R16 pairings Canada–Morocco,
+      // Paraguay–France, Brazil–Norway confirm 89={73,75}, 90={74,77},
+      // 91={76,78}). Official match numbers 73–103.
+      //
+      // Each R32 slot is defined by group position: {p:1|2, g:'A'} is the
+      // winner / runner-up of a group; {third:true} is a third-placed team.
+      // We never hard-code the FIFA third-place allocation table — the third
+      // in each mixed slot is simply read off the feed (the opponent of the
+      // known seed). Higher rounds derive their teams from the winners of
+      // their two child matches, so the tree fills in as results arrive.
+      const R32_SLOTS = {
+        73: [{ p: 2, g: 'A' }, { p: 2, g: 'B' }],
+        74: [{ p: 1, g: 'E' }, { third: true }],
+        75: [{ p: 1, g: 'F' }, { p: 2, g: 'C' }],
+        76: [{ p: 1, g: 'C' }, { p: 2, g: 'F' }],
+        77: [{ p: 1, g: 'I' }, { third: true }],
+        78: [{ p: 2, g: 'E' }, { p: 2, g: 'I' }],
+        79: [{ p: 1, g: 'A' }, { third: true }],
+        80: [{ p: 1, g: 'L' }, { third: true }],
+        81: [{ p: 1, g: 'D' }, { third: true }],
+        82: [{ p: 1, g: 'G' }, { third: true }],
+        83: [{ p: 2, g: 'K' }, { p: 2, g: 'L' }],
+        84: [{ p: 1, g: 'H' }, { p: 2, g: 'J' }],
+        85: [{ p: 1, g: 'B' }, { third: true }],
+        86: [{ p: 1, g: 'J' }, { p: 2, g: 'H' }],
+        87: [{ p: 1, g: 'K' }, { third: true }],
+        88: [{ p: 2, g: 'D' }, { p: 2, g: 'G' }],
+      };
+      // parent match# -> [top child, bottom child]
+      const TREE = {
+        89: [73, 75], 90: [74, 77], 91: [76, 78], 92: [79, 80],
+        93: [83, 84], 94: [81, 82], 95: [86, 88], 96: [85, 87],
+        97: [89, 90], 98: [91, 92], 99: [93, 94], 100: [95, 96],
+        101: [97, 98], 102: [99, 100], 103: [101, 102],
+      };
+      const ROUND_NAMES = [
+        'Round of 32',
+        'Round of 16',
+        'Quarter-finals',
+        'Semi-finals',
+        'Final',
+      ];
+      // match# -> round index (0=R32 … 4=Final)
+      const ROUND_OF = {};
+      [
+        [73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88],
+        [89, 90, 91, 92, 93, 94, 95, 96],
+        [97, 98, 99, 100],
+        [101, 102],
+        [103],
+      ].forEach((arr, r) => arr.forEach(n => (ROUND_OF[n] = r)));
+      // R32 matches, top-to-bottom, so bracket rows follow the tree (no crossed
+      // lines): an in-order walk of TREE from the final down to the leaves.
+      const R32_ORDER = (function walk(n) {
+        return TREE[n] ? [...walk(TREE[n][0]), ...walk(TREE[n][1])] : [n];
+      })(103);
+
+      // football-data stage string -> round index, or -1 for the group stage.
+      function stageRound(s) {
+        s = String(s || '').toUpperCase();
+        if (/LAST_32/.test(s)) return 0;
+        if (/LAST_16/.test(s)) return 1;
+        if (/QUARTER/.test(s)) return 2;
+        if (/SEMI/.test(s)) return 3; // check before FINAL (SEMI_FINALS contains "FINAL")
+        if (/FINAL/.test(s)) return 4;
+        return -1;
+      }
+
+      // True for a group-stage match. A row counts as group play if its stage
+      // says so, or (for feeds that don't carry a stage) if it isn't a knockout
+      // stage. Used to keep knockout results out of the by-group standings.
+      function isGroupMatch(m) {
+        if (stageRound(m.stage) !== -1) return false; // a knockout round
+        if (m.stage && !/GROUP/i.test(m.stage)) return false; // some other stage
+        return true;
+      }
+
+      // Final group-stage standings, group by group. The R32 seeds are placed
+      // from these, so this must count the group stage ONLY (never knockout
+      // games). Returns { '1A': 'Mexico', '2A': 'South Africa', … }.
+      function groupPositions(matches) {
+        const t = {};
+        Object.keys(TEAMS).forEach(n => (t[n] = blankRow(n)));
+        for (const m of matches) {
+          // A row is group-stage if its stage says so, or (for feeds without a
+          // stage field) if it isn't a knockout stage.
+          if (stageRound(m.stage) !== -1) continue;
+          if (m.stage && !/GROUP/i.test(m.stage)) continue;
+          const h = canon(m.team1),
+            a = canon(m.team2);
+          if (!t[h] || !t[a]) continue;
+          const s = m.score && m.score.ft;
+          if (!Array.isArray(s) || s[0] == null || s[1] == null) continue;
+          const [hg, ag] = s;
+          t[h].pld++; t[a].pld++;
+          t[h].gf += hg; t[h].ga += ag; t[a].gf += ag; t[a].ga += hg;
+          if (hg > ag) { t[h].w++; t[a].l++; t[h].pts += 3; }
+          else if (hg < ag) { t[a].w++; t[h].l++; t[a].pts += 3; }
+          else { t[h].d++; t[a].d++; t[h].pts++; t[a].pts++; }
+        }
+        const byG = {};
+        Object.values(t).forEach(r => (byG[r.group] = byG[r.group] || []).push(r));
+        const cmp = (a, b) =>
+          b.pts - a.pts ||
+          b.gf - b.ga - (a.gf - a.ga) ||
+          b.gf - a.gf ||
+          a.name.localeCompare(b.name);
+        const pos = {};
+        Object.keys(byG).forEach(g => {
+          const s = byG[g].sort(cmp);
+          if (s[0]) pos['1' + g] = s[0].name;
+          if (s[1]) pos['2' + g] = s[1].name;
+        });
+        return pos;
+      }
+
+      // Knockout matches from the feed, normalized and tagged with round.
+      function koMatches(matches) {
+        return matches
+          .map(m => {
+            const round = stageRound(m.stage);
+            if (round === -1) return null;
+            const s = m.score && m.score.ft;
+            return {
+              round,
+              t1: canon(m.team1),
+              t2: canon(m.team2),
+              score:
+                Array.isArray(s) && s[0] != null && s[1] != null
+                  ? [Number(s[0]), Number(s[1])]
+                  : null,
+              status: m.status || '',
+              kickoff: m.kickoff || null,
+            };
+          })
+          .filter(Boolean);
+      }
+
+      // Find an unused feed match in `round` involving the given team(s), mark
+      // it used, and return it. `teams` is 1 or 2 names; a team plays at most
+      // one match per round so this is unambiguous.
+      function takeMatch(ko, used, round, teams) {
+        teams = teams.filter(Boolean);
+        if (!teams.length) return null;
+        for (let i = 0; i < ko.length; i++) {
+          if (used.has(i) || ko[i].round !== round) continue;
+          const pair = [ko[i].t1, ko[i].t2];
+          if (teams.every(x => pair.includes(x))) {
+            used.add(i);
+            return ko[i];
+          }
+        }
+        return null;
+      }
+
+      // Winner of a decided match. Prefers the score; falls back to lineage
+      // (a team that turns up in the next round advanced) so knockout ties
+      // settled on penalties — which the fulltime score can't show — resolve.
+      function winnerOf(node, ko) {
+        if (!node) return null;
+        const [a, b] = node.teams;
+        const mt = node.match;
+        if (mt && mt.score) {
+          if (mt.score[0] > mt.score[1]) return mt.t1;
+          if (mt.score[1] > mt.score[0]) return mt.t2;
+        }
+        const adv = [a, b].filter(
+          tm => tm && ko.some(m => m.round === node.round + 1 && (m.t1 === tm || m.t2 === tm))
+        );
+        return adv.length === 1 ? adv[0] : null;
+      }
+
+      // Assemble every node of the bracket: { n, round, teams:[top,bottom],
+      // match }. `teams` may contain nulls for slots not yet decided.
+      function buildBracket(matches) {
+        const pos = groupPositions(matches);
+        const ko = koMatches(matches);
+        const used = new Set();
+        const nodes = {};
+
+        // R32: place seeds from the standings, read any third off the feed.
+        for (let n = 73; n <= 88; n++) {
+          const [x, y] = R32_SLOTS[n];
+          const seedOf = s => (s.p ? pos[s.p + s.g] || null : null);
+          const s1 = seedOf(x),
+            s2 = seedOf(y);
+          let teams, match;
+          if (x.p && y.p) {
+            match = takeMatch(ko, used, 0, [s1, s2]);
+            teams = [s1, s2];
+          } else {
+            const seed = x.p ? s1 : s2;
+            match = takeMatch(ko, used, 0, [seed]);
+            const third = match ? (match.t1 === seed ? match.t2 : match.t1) : null;
+            teams = x.p ? [seed, third] : [third, seed];
+          }
+          nodes[n] = { n, round: 0, teams, match };
+        }
+
+        // R16 → Final: participants are the winners of the two child matches.
+        for (const n of [89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103]) {
+          const [c1, c2] = TREE[n];
+          const w1 = winnerOf(nodes[c1], ko),
+            w2 = winnerOf(nodes[c2], ko);
+          const match = takeMatch(ko, used, ROUND_OF[n], [w1, w2]);
+          const teams = [w1, w2];
+          // If only one child is decided, the feed match (if present) reveals
+          // the opponent early.
+          if (match) {
+            if (!w1) teams[0] = match.t1 === w2 ? match.t2 : match.t1;
+            if (!w2) teams[1] = match.t1 === w1 ? match.t2 : match.t1;
+          }
+          nodes[n] = { n, round: ROUND_OF[n], teams, match };
+        }
+        return nodes;
+      }
+
+      // ---- Bracket rendering (SVG) -----------------------------------------
+      // A dozen distinct hues, one per group A–L, tying the bracket back to the
+      // group-stage colors.
+      function groupHue(g) {
+        return ((g.charCodeAt(0) - 65) * 30) % 360;
+      }
+      // The metric that drives bubble size, per the shared mode toggle:
+      // pc→population, gdp→GDP, gdppc→GDP per capita, raw→equal-sized.
+      function bkMetric(name) {
+        const T = TEAMS[name];
+        if (!T) return 0;
+        if (state.mode === 'pc') return T.pop;
+        if (state.mode === 'gdp') return T.gdp;
+        if (state.mode === 'gdppc') return T.gdp / T.pop;
+        return 1;
+      }
+      function bkMetricLabel(name) {
+        const T = TEAMS[name];
+        if (!T) return '';
+        if (state.mode === 'pc') return fmtPop(T.pop);
+        if (state.mode === 'gdp') return fmtGdp(T.gdp);
+        if (state.mode === 'gdppc') return fmtGdpPc(T.gdp / T.pop);
+        return '';
+      }
+      // The text beside each dot: the metric value in the scaled modes, or the
+      // country name in Unscaled (where every dot is the same size, so the name
+      // is the useful thing to show). Long names are truncated to fit the card.
+      function bkLabel(name) {
+        if (state.mode !== 'raw') return bkMetricLabel(name);
+        return name.length > 15 ? name.slice(0, 14) + '…' : name;
+      }
+      const BK_MODE_DESC = {
+        pc: 'population',
+        gdp: 'GDP',
+        gdppc: 'GDP per capita',
+        raw: 'equal size (unscaled)',
+      };
+
+      function renderBracket() {
+        const svg = document.getElementById('brk-svg');
+        const matches = state.matches || [];
+        const ko = koMatches(matches); // used for winner lineage below
+        const nodes = buildBracket(matches);
+
+        // No knockout data yet → friendly note instead of an empty grid.
+        const anyKo = Object.keys(nodes).some(n => nodes[n].match);
+        const legend = document.getElementById('brk-legend');
+        if (!anyKo) {
+          svg.innerHTML = '';
+          svg.setAttribute('width', 0);
+          svg.setAttribute('height', 0);
+          legend.innerHTML =
+            'The knockout bracket appears here once the Round of 32 begins.';
+          return;
+        }
+
+        // ---- layout: fixed-size match cards on a bracket grid -------------
+        const CARD_W = 152,
+          HDR = 19, // header strip (kickoff + status)
+          ROW = 31, // per-team row
+          CARD_H = HDR + 2 * ROW,
+          V_GAP = 20, // gap between adjacent R32 cards
+          PITCH = CARD_H + V_GAP, // R32 card center-to-center
+          COL_GAP = 62, // horizontal room for the connectors
+          LEFT = 12,
+          TOP = 36,
+          R_MIN = 4,
+          R_MAX = 28; // wide span: big dots deliberately overflow their card
+        const colX = r => LEFT + r * (CARD_W + COL_GAP); // card left edge
+        const WIDTH = colX(4) + CARD_W + 16;
+        const HEIGHT = TOP + 15 * PITCH + CARD_H + 16;
+
+        // Dot radius: area ≈ proportional to the metric (sqrt on the radius),
+        // normalized to the biggest team in play, then bounded to fit the card.
+        const teamsInPlay = [];
+        for (let n = 73; n <= 88; n++)
+          nodes[n].teams.forEach(t => t && teamsInPlay.push(t));
+        const vMax = Math.max(1, ...teamsInPlay.map(bkMetric));
+        const radiusOf = name => {
+          if (state.mode === 'raw') return 10;
+          const v = Math.max(0, bkMetric(name));
+          return R_MIN + (R_MAX - R_MIN) * Math.sqrt(v / vMax);
+        };
+
+        // Vertical center of each card: fixed rows for R32, midpoint of the two
+        // children for later rounds — the classic bracket alignment.
+        const cache = {};
+        const centerY = n => {
+          if (cache[n] != null) return cache[n];
+          const c =
+            ROUND_OF[n] === 0
+              ? TOP + R32_ORDER.indexOf(n) * PITCH + CARD_H / 2
+              : (centerY(TREE[n][0]) + centerY(TREE[n][1])) / 2;
+          return (cache[n] = c);
+        };
+
+        const champion = winnerOf(nodes[103], ko);
+        const whenStr = iso => {
+          if (!iso) return '';
+          const d = new Date(iso);
+          return isNaN(d)
+            ? ''
+            : d.toLocaleString([], {
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+              });
+        };
+
+        const links = [];
+        const cards = [];
+        const dots = []; // metric dots + flags, drawn last so big ones overlap
+
+        // ---- elbow connectors (drawn first so cards paint over them) ------
+        for (const p in TREE) {
+          const [c1, c2] = TREE[p];
+          const cyTop = centerY(c1),
+            cyBot = centerY(c2),
+            cyP = centerY(p);
+          const childRight = colX(ROUND_OF[c1]) + CARD_W;
+          const pLeft = colX(ROUND_OF[p]);
+          const xmid = (childRight + pLeft) / 2;
+          links.push(
+            `<path class="bk-link" d="M ${childRight} ${cyTop} H ${xmid} V ${cyBot} H ${childRight} M ${xmid} ${cyP} H ${pLeft}"/>`
+          );
+          // tint the stub of a child whose winner advanced into this match
+          const parentTeams = nodes[p].teams;
+          [[c1, cyTop], [c2, cyBot]].forEach(([c, cyc]) => {
+            const w = winnerOf(nodes[c], ko);
+            if (w && parentTeams.includes(w))
+              links.push(
+                `<path class="bk-link win" d="M ${childRight} ${cyc} H ${xmid}"/>`
+              );
+          });
+        }
+
+        // ---- match cards --------------------------------------------------
+        for (const key in nodes) {
+          const node = nodes[key];
+          const r = node.round;
+          const left = colX(r);
+          const top = centerY(node.n) - CARD_H / 2;
+          const mt = node.match;
+          const winner = winnerOf(node, ko);
+          const live = mt && /in_play|paused/.test(mt.status);
+
+          const el = [
+            `<rect class="bk-card${live ? ' live' : ''}" x="${left}" y="${top}" width="${CARD_W}" height="${CARD_H}" rx="9"/>`,
+            `<text class="bk-when" x="${left + 10}" y="${top + 13}">${whenStr(mt && mt.kickoff)}</text>`,
+          ];
+          if (live)
+            el.push(
+              `<rect class="bk-live-pill" x="${left + CARD_W - 42}" y="${top + 4}" width="34" height="13" rx="6.5"/>`,
+              `<text x="${left + CARD_W - 25}" y="${top + 13.5}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#fff">LIVE</text>`
+            );
+          else if (mt && mt.score)
+            el.push(
+              `<text class="bk-ft" x="${left + CARD_W - 10}" y="${top + 13}" text-anchor="end">FT</text>`
+            );
+
+          node.teams.forEach((name, i) => {
+            const cy = top + HDR + i * ROW + ROW / 2;
+            const decided = mt && mt.score && !live;
+            const isWin = name && decided && name === winner;
+            const isLose = name && decided && winner && name !== winner;
+            const dotX = left + 20;
+            if (!name) {
+              el.push(
+                `<circle cx="${dotX}" cy="${cy}" r="8" fill="#cbd2da"/>`,
+                `<text class="bk-tbd" x="${left + 40}" y="${cy + 4}">TBD</text>`
+              );
+              return;
+            }
+            const rad = radiusOf(name);
+            const hue = TEAMS[name] ? groupHue(TEAMS[name].g) : 0;
+            // dot + flag go on the top layer so oversized dots overlap and
+            // spill past the card rather than being clipped by neighbors
+            dots.push(
+              `<circle cx="${dotX}" cy="${cy}" r="${rad.toFixed(1)}" ` +
+                `fill="hsl(${hue} 65% 55% / ${isLose ? 0.14 : 0.4})" ` +
+                `stroke="hsl(${hue} 60% 42% / ${isLose ? 0.45 : 0.95})" stroke-width="1.5"/>`
+            );
+            const fs = Math.max(11, Math.min(rad * 1.25, 24));
+            dots.push(
+              `<text class="bk-flag" x="${dotX}" y="${cy}" font-size="${fs.toFixed(0)}" text-anchor="middle" dominant-baseline="central">${FLAG[name] || ''}</text>`
+            );
+            el.push(
+              `<text class="bk-meta" x="${left + 40}" y="${cy + 4}">${bkLabel(name)}${name === champion && r === 4 ? ' 🏆' : ''}</text>`
+            );
+            const goal =
+              mt && mt.score
+                ? name === mt.t1
+                  ? mt.score[0]
+                  : name === mt.t2
+                    ? mt.score[1]
+                    : null
+                : null;
+            if (goal != null)
+              el.push(
+                `<text class="bk-goal${isLose ? ' lose' : ''}" x="${left + CARD_W - 18}" y="${cy + 5}" text-anchor="end">${goal}</text>`
+              );
+            if (isWin)
+              el.push(
+                `<path class="bk-win-mark" d="M ${left + CARD_W - 8} ${cy - 4} L ${left + CARD_W - 8} ${cy + 4} L ${left + CARD_W - 13} ${cy} Z"/>`
+              );
+          });
+          cards.push(el.join(''));
+        }
+
+        // round headers, aligned to each column of cards
+        const heads = ROUND_NAMES.map(
+          (nm, r) => `<text class="bk-round" x="${colX(r)}" y="22">${nm}</text>`
+        ).join('');
+
+        svg.setAttribute('width', WIDTH);
+        svg.setAttribute('height', HEIGHT);
+        svg.setAttribute('viewBox', `0 0 ${WIDTH} ${HEIGHT}`);
+        svg.innerHTML = heads + links.join('') + cards.join('') + dots.join('');
+
+        legend.innerHTML =
+          `Dot size = <b>${BK_MODE_DESC[state.mode]}</b> · color = group · ` +
+          `faded = eliminated. Switch the metric with the buttons above.`;
+      }
+
+      // Draw whichever view is active. Used everywhere the data or the toggles
+      // change, in place of calling render()/renderBracket() directly.
+      function paint() {
+        const isBracket = state.view === 'bracket';
+        document.querySelector('.wrap').style.display = isBracket ? 'none' : '';
+        document.getElementById('brk').hidden = !isBracket;
+        if (isBracket) renderBracket();
+        else render();
         renderLive();
       }
 
@@ -1280,10 +1850,10 @@
       async function load(force) {
         const cached = fromCache();
         if (cached && !cached.stale && !force) {
-          state.rows = buildTable(cached.matches);
+          state.matches = cached.matches;
           state.live = collectLive(cached.matches);
           state.updated = cached.u || cached.t;
-          render();
+          paint();
           setStatus(statusLine(cached.matches, state.updated));
           return;
         }
@@ -1318,26 +1888,26 @@
               src: best.src,
             })
           );
-          state.rows = buildTable(best.matches);
+          state.matches = best.matches;
           state.live = collectLive(best.matches);
           state.updated = dataT;
-          render();
+          paint();
           setStatus(statusLine(best.matches, dataT));
           return;
         }
 
         // total failure — fall back to cache or zeros
         if (cached) {
-          state.rows = buildTable(cached.matches);
+          state.matches = cached.matches;
           state.live = collectLive(cached.matches);
-          render();
+          paint();
           setStatus(
             'offline · ' + statusLine(cached.matches, cached.u || cached.t)
           );
         } else {
-          state.rows = Object.keys(TEAMS).map(blankRow);
+          state.matches = [];
           state.live = [];
-          render();
+          paint();
           setStatus('no data yet — retrying…');
         }
       }
@@ -1367,7 +1937,7 @@
             RAW_OF[state.sortKey]
           )
             state.sortKey = RAW_OF[state.sortKey];
-          render();
+          paint();
         };
       });
 
@@ -1380,7 +1950,7 @@
             .forEach(x => x.classList.remove('on'));
           b.classList.add('on');
           state.view = b.dataset.view;
-          render();
+          paint();
         };
       });
 
