@@ -413,15 +413,11 @@
         font-weight: 700;
       }
       /* Elbow connectors between match cards. Deliberately a solid mid-gray so
-         the tree structure reads clearly; the advancing path is tinted green. */
+         the tree structure reads clearly. */
       .bk-link {
         fill: none;
         stroke: #c2cad3;
         stroke-width: 1.75;
-      }
-      .bk-link.win {
-        stroke: var(--accent);
-        stroke-width: 2.5;
       }
       /* Match card */
       .bk-card {
@@ -1614,22 +1610,29 @@
           COL_GAP = 62, // horizontal room for the connectors
           LEFT = 12,
           TOP = 36,
-          R_MIN = 4,
-          R_MAX = 28; // wide span: big dots deliberately overflow their card
+          // The flag emoji is ~15px tall; the smallest scaled dot is ¼ that
+          // height (a speck centered on the flag) and the rest scale up from it,
+          // while the unscaled view uses one uniform dot just bigger than a flag.
+          DOT_MIN = 15 / 8,
+          DOT_RAW = 10;
         const colX = r => LEFT + r * (CARD_W + COL_GAP); // card left edge
         const WIDTH = colX(4) + CARD_W + 16;
         const HEIGHT = TOP + 15 * PITCH + CARD_H + 16;
 
-        // Dot radius: area ≈ proportional to the metric (sqrt on the radius),
-        // normalized to the biggest team in play, then bounded to fit the card.
-        const teamsInPlay = [];
-        for (let n = 73; n <= 88; n++)
-          nodes[n].teams.forEach(t => t && teamsInPlay.push(t));
-        const vMax = Math.max(1, ...teamsInPlay.map(bkMetric));
+        // Dot radius: TRUE TO SCALE by area, but anchored so the smallest team
+        // of all 48 comes out about ¼ the flag's height — a small dot on the
+        // flag rather than an invisible speck. Every other dot is √(v / vMin)
+        // larger in radius (v / vMin larger in area), keeping the ratios honest.
+        // No cap: the giants get large and spill past their cards.
+        const allVals = Object.keys(TEAMS)
+          .map(bkMetric)
+          .filter(v => v > 0);
+        const vMin = allVals.length ? Math.min(...allVals) : 1;
         const radiusOf = name => {
-          if (state.mode === 'raw') return 10;
+          if (state.mode === 'raw') return DOT_RAW;
           const v = Math.max(0, bkMetric(name));
-          return R_MIN + (R_MAX - R_MIN) * Math.sqrt(v / vMax);
+          if (v <= 0) return 0;
+          return DOT_MIN * Math.sqrt(v / vMin);
         };
 
         // Vertical center of each card: fixed rows for R32, midpoint of the two
@@ -1661,7 +1664,8 @@
 
         const links = [];
         const cards = [];
-        const dots = []; // metric dots + flags, drawn last so big ones overlap
+        const dots = []; // metric dots, drawn over cards so big ones overlap
+        const flags = []; // flags, drawn last so they stay readable over dots
 
         // ---- elbow connectors (drawn first so cards paint over them) ------
         for (const p in TREE) {
@@ -1675,15 +1679,6 @@
           links.push(
             `<path class="bk-link" d="M ${childRight} ${cyTop} H ${xmid} V ${cyBot} H ${childRight} M ${xmid} ${cyP} H ${pLeft}"/>`
           );
-          // tint the stub of a child whose winner advanced into this match
-          const parentTeams = nodes[p].teams;
-          [[c1, cyTop], [c2, cyBot]].forEach(([c, cyc]) => {
-            const w = winnerOf(nodes[c], ko);
-            if (w && parentTeams.includes(w))
-              links.push(
-                `<path class="bk-link win" d="M ${childRight} ${cyc} H ${xmid}"/>`
-              );
-          });
         }
 
         // ---- match cards --------------------------------------------------
@@ -1715,29 +1710,33 @@
             const decided = mt && mt.score && !live;
             const isWin = name && decided && name === winner;
             const isLose = name && decided && winner && name !== winner;
-            const dotX = left + 20;
+            // Flag and its size-dot share a center. The dot is translucent and
+            // drawn on top of the flag, so small dots read as a speck on the
+            // flag and big ones wash over it (and past the card).
+            const CX = left + 22,
+              META_X = left + 44;
             if (!name) {
               el.push(
-                `<circle cx="${dotX}" cy="${cy}" r="8" fill="#cbd2da"/>`,
-                `<text class="bk-tbd" x="${left + 40}" y="${cy + 4}">TBD</text>`
+                `<circle cx="${CX}" cy="${cy}" r="8" fill="#cbd2da"/>`,
+                `<text class="bk-tbd" x="${META_X}" y="${cy + 4}">TBD</text>`
               );
               return;
             }
             const rad = radiusOf(name);
             const hue = TEAMS[name] ? groupHue(TEAMS[name].g) : 0;
-            // dot + flag go on the top layer so oversized dots overlap and
-            // spill past the card rather than being clipped by neighbors
+            // Size-dot on the dots layer so oversized ones overlap and spill
+            // past the card rather than being clipped by neighbors.
             dots.push(
-              `<circle cx="${dotX}" cy="${cy}" r="${rad.toFixed(1)}" ` +
+              `<circle cx="${CX}" cy="${cy}" r="${rad.toFixed(1)}" ` +
                 `fill="hsl(${hue} 65% 55% / ${isLose ? 0.14 : 0.4})" ` +
                 `stroke="hsl(${hue} 60% 42% / ${isLose ? 0.45 : 0.95})" stroke-width="1.5"/>`
             );
-            const fs = Math.max(11, Math.min(rad * 1.25, 24));
-            dots.push(
-              `<text class="bk-flag" x="${dotX}" y="${cy}" font-size="${fs.toFixed(0)}" text-anchor="middle" dominant-baseline="central">${FLAG[name] || ''}</text>`
+            // Flag centered under the dot, fixed readable size.
+            flags.push(
+              `<text class="bk-flag" x="${CX}" y="${cy}" text-anchor="middle" dominant-baseline="central">${FLAG[name] || ''}</text>`
             );
             el.push(
-              `<text class="bk-meta" x="${left + 40}" y="${cy + 4}">${bkLabel(name)}${name === champion && r === 4 ? ' 🏆' : ''}</text>`
+              `<text class="bk-meta" x="${META_X}" y="${cy + 4}">${bkLabel(name)}${name === champion && r === 4 ? ' 🏆' : ''}</text>`
             );
             const goal =
               mt && mt.score
@@ -1767,11 +1766,16 @@
         svg.setAttribute('width', WIDTH);
         svg.setAttribute('height', HEIGHT);
         svg.setAttribute('viewBox', `0 0 ${WIDTH} ${HEIGHT}`);
-        svg.innerHTML = heads + links.join('') + cards.join('') + dots.join('');
+        svg.innerHTML =
+          heads +
+          links.join('') +
+          cards.join('') +
+          flags.join('') +
+          dots.join('');
 
         legend.innerHTML =
-          `Dot size = <b>${BK_MODE_DESC[state.mode]}</b> · color = group · ` +
-          `faded = eliminated. Switch the metric with the buttons above.`;
+          `Dot area = <b>${BK_MODE_DESC[state.mode]}</b>, true to scale · ` +
+          `color = group · faded = eliminated. Switch the metric with the buttons above.`;
       }
 
       // Draw whichever view is active. Used everywhere the data or the toggles
